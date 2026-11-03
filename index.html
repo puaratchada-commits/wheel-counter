@@ -59,7 +59,7 @@
         <button id="prevDayBtn">◀ 前日</button>
         <input type="date" id="dateFilter">
         <button id="nextDayBtn">翌日 ▶</button>
-        <button id="filterBtn">指定日を表示</button>
+        <button id="filterBtn">指定日周辺を表示</button>
         <button id="resetBtn">最新に戻る</button>
         <button id="downloadCsvBtn" style="background-color: #e8f5e9; border: 1px solid #4caf50;">CSV保存</button>
         <button id="clearBtn" style="color: red;">データ全消去</button>
@@ -159,25 +159,59 @@
             }
         });
 
-        // --- 2. グラフ描画ヘルパー（常に日付順にソートして描画） ---
+        // --- 2. グラフ描画ヘルパー（最新N件） ---
         function renderRecentData(limit = 50) {
             const currentKey = getCurrentDeviceKey();
             localStorage.setItem('activeSelectedDevice', currentKey);
             document.getElementById('displayDeviceName').textContent = currentKey;
 
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
-            
-            // ★ここで必ず日付の古い順（昇順）に並び替える
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
+            const recentData = history.slice(-limit);
+            updateChartWithData(recentData);
+        }
+
+        // --- 指定日を起点にした周辺データを描画する関数 ---
+        function renderDataAroundDate(targetDateStr, limit = 50) {
+            const currentKey = getCurrentDeviceKey();
+            localStorage.setItem('activeSelectedDevice', currentKey);
+            document.getElementById('displayDeviceName').textContent = currentKey;
+
+            let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+            history.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+            // 指定日のインデックスを探す
+            let targetIndex = history.findIndex(item => item.time === targetDateStr);
+            
+            let displayData = [];
+            if (targetIndex !== -1) {
+                // 指定日が存在する場合、その前後を含めて最大 limit 件を切り出す
+                let half = Math.floor(limit / 2);
+                let start = Math.max(0, targetIndex - half);
+                let end = Math.min(history.length, start + limit);
+                // 端数調整
+                if (end - start < limit && start > 0) {
+                    start = Math.max(0, end - limit);
+                }
+                displayData = history.slice(start, end);
+            } else {
+                // 指定日のデータがない場合は単に直近データを表示
+                displayData = history.slice(-limit);
+            }
+
+            updateChartWithData(displayData);
+        }
+
+        // 共通のチャート更新処理
+        function updateChartWithData(dataList) {
             wheelChart.data.labels = [];
             wheelChart.data.datasets[0].data = [];
             wheelChart.data.datasets[1].data = [];
             wheelChart.data.datasets[2].data = [];
             wheelChart.data.datasets[3].data = [];
 
-            const recentData = history.slice(-limit);
-            recentData.forEach(item => {
+            dataList.forEach(item => {
                 wheelChart.data.labels.push(item.time);
                 wheelChart.data.datasets[0].data.push(item.rpm || 0);
                 wheelChart.data.datasets[1].data.push(item.speed || 0);
@@ -186,6 +220,7 @@
             });
             wheelChart.update();
         }
+
         renderRecentData(50);
 
         document.getElementById('deviceSelect').addEventListener('change', () => {
@@ -271,7 +306,7 @@
             }
         }
 
-        // --- 4. データの受信処理（保存時にもソートを適用） ---
+        // --- 4. データの受信処理 ---
         function processCSV(csvLine) {
             const values = csvLine.split(',');
             if (values.length < 4) return; 
@@ -295,7 +330,6 @@
                 if (history.length > 10000) history.shift();
             }
 
-            // 保存前にもソート
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
             localStorage.setItem(getStorageKey(), JSON.stringify(history));
             renderRecentData(50);
@@ -325,11 +359,10 @@
                 history.push({ time: targetDateStr, rpm: 0, speed: 0, duration: 0, weight: weightVal });
             }
 
-            // 保存前にもソート
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
             localStorage.setItem(getStorageKey(), JSON.stringify(history));
             alert(`[${getCurrentDeviceKey()}] ${targetDateStr} の体重 ${weightVal}g を保存しました！`);
-            showDateData(targetDateStr);
+            showDateDataAndAround(targetDateStr);
         });
 
         // --- 6. CSVインポート処理 ---
@@ -378,7 +411,6 @@
                     importedCount++;
                 }
 
-                // インポート後にもソート
                 history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
                 localStorage.setItem(getStorageKey(), JSON.stringify(history));
@@ -412,10 +444,10 @@
             wheelChart.update();
         });
 
-        // --- 8. 日付指定表示 ＆ 前日・翌日ナビゲーション ---
+        // --- 8. 指定日周辺のデータ表示 ＆ 前日・翌日ナビゲーション ---
         const dateFilter = document.getElementById('dateFilter');
 
-        function showDateData(targetDateStr) {
+        function showDateDataAndAround(targetDateStr) {
             const history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             const targetRecord = history.find(item => item.time === targetDateStr);
 
@@ -426,32 +458,20 @@
                 document.getElementById('totalDuration').textContent = "--";
                 document.getElementById('avgSpeed').textContent = "--";
                 document.getElementById('totalRpm').textContent = "--";
-
-                wheelChart.data.labels = [targetDateStr + " (データなし)"];
-                wheelChart.data.datasets[0].data = [0];
-                wheelChart.data.datasets[1].data = [0];
-                wheelChart.data.datasets[2].data = [0];
-                wheelChart.data.datasets[3].data = [null];
-                wheelChart.update();
-                return;
+            } else {
+                document.getElementById('displayWeight').textContent = targetRecord.weight !== undefined ? targetRecord.weight : "--";
+                document.getElementById('totalDuration').textContent = targetRecord.duration || 0;
+                document.getElementById('avgSpeed').textContent = (targetRecord.speed || 0).toFixed(1);
+                document.getElementById('totalRpm').textContent = (targetRecord.rpm || 0).toLocaleString();
             }
 
-            document.getElementById('displayWeight').textContent = targetRecord.weight !== undefined ? targetRecord.weight : "--";
-            document.getElementById('totalDuration').textContent = targetRecord.duration || 0;
-            document.getElementById('avgSpeed').textContent = (targetRecord.speed || 0).toFixed(1);
-            document.getElementById('totalRpm').textContent = (targetRecord.rpm || 0).toLocaleString();
-
-            wheelChart.data.labels = [targetRecord.time];
-            wheelChart.data.datasets[0].data = [targetRecord.rpm || 0];
-            wheelChart.data.datasets[1].data = [targetRecord.speed || 0];
-            wheelChart.data.datasets[2].data = [targetRecord.duration || 0];
-            wheelChart.data.datasets[3].data = [targetRecord.weight !== undefined ? targetRecord.weight : null];
-            wheelChart.update();
+            // 指定日を基準に周辺50件をグラフに表示
+            renderDataAroundDate(targetDateStr, 50);
         }
 
         document.getElementById('filterBtn').addEventListener('click', () => {
             if (!dateFilter.value) { alert("日付を選択してください。"); return; }
-            showDateData(dateFilter.value);
+            showDateDataAndAround(dateFilter.value);
         });
 
         function shiftDate(days) {
@@ -462,7 +482,7 @@
             const yyyy = baseDate.getFullYear();
             const mm = String(baseDate.getMonth() + 1).padStart(2, '0');
             const dd = String(baseDate.getDate()).padStart(2, '0');
-            showDateData(`${yyyy}-${mm}-${dd}`);
+            showDateDataAndAround(`${yyyy}-${mm}-${dd}`);
         }
 
         document.getElementById('prevDayBtn').addEventListener('click', () => shiftDate(-1));
@@ -482,7 +502,6 @@
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
 
-            // ダウンロード時も確実に日付順に並び替え
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
             let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g)\r\n";
@@ -496,7 +515,7 @@
             const today = new Date().toISOString().split('T')[0];
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `${getCurrentDeviceName()}_wheel_data_${today}.csv`;
+            link.download = `${getCurrentDeviceKey()}_wheel_data_${today}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
