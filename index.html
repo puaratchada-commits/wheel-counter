@@ -39,13 +39,14 @@
         <input type="file" id="importCsvFile" accept=".csv" style="font-size: 14px;">
     </div>
 
-    <!-- 棒グラフ対象の選択メニュー -->
+    <!-- 棒グラフ対象の選択メニュー（体重を追加） -->
     <div class="controls">
         <label for="barTargetSelect">棒グラフの対象: </label>
         <select id="barTargetSelect">
             <option value="2" selected>運動時間 (分)</option>
             <option value="0">回転数 (回)</option>
             <option value="1">平均速度 (cm/s)</option>
+            <option value="3">体重 (g)</option>
         </select>
     </div>
 
@@ -82,11 +83,12 @@
             return `wheelData_${activeDeviceKey}`;
         }
 
-        // --- スタイル定義 ---
+        // --- スタイル定義（0:回転数, 1:速度, 2:時間, 3:体重） ---
         const metricStyles = [
             { borderColor: 'rgb(75, 192, 192)', bgColor: 'rgba(75, 192, 192, 0.3)' }, // 回転数
             { borderColor: 'rgb(255, 99, 132)',  bgColor: 'rgba(255, 99, 132, 0.3)' },  // 平均速度
-            { borderColor: 'rgb(54, 162, 235)',  bgColor: 'rgba(54, 162, 235, 0.3)' }   // 運動時間
+            { borderColor: 'rgb(54, 162, 235)',  bgColor: 'rgba(54, 162, 235, 0.3)' },  // 運動時間
+            { borderColor: 'rgb(156, 39, 176)',  bgColor: 'rgba(156, 39, 176, 0.3)' }   // 体重 (紫)
         ];
 
         // --- 1. Chart.js の初期設定 ---
@@ -99,7 +101,7 @@
                     { label: '回転数 (回)', type: 'line', data: [], borderColor: metricStyles[0].borderColor, backgroundColor: 'transparent', yAxisID: 'y', tension: 0.1, order: 1 },
                     { label: '平均速度 (cm/s)', type: 'line', data: [], borderColor: metricStyles[1].borderColor, backgroundColor: 'transparent', yAxisID: 'y2', tension: 0.1, order: 1 },
                     { label: '運動時間 (分)', type: 'bar', data: [], borderColor: metricStyles[2].borderColor, backgroundColor: metricStyles[2].bgColor, borderWidth: 1, yAxisID: 'y2', order: 2 },
-                    { label: '体重 (g)', type: 'line', data: [], borderColor: 'rgb(156, 39, 176)', backgroundColor: 'transparent', yAxisID: 'y3', tension: 0.1, order: 1 }
+                    { label: '体重 (g)', type: 'line', data: [], borderColor: metricStyles[3].borderColor, backgroundColor: 'transparent', yAxisID: 'y3', tension: 0.1, order: 1 }
                 ]
             },
             options: {
@@ -289,11 +291,10 @@
             reader.readAsText(file, 'UTF-8');
         });
 
-        // --- 7. 棒グラフ項目の動的切替 ---
+        // --- 7. 棒グラフ項目の動的切替（体重も含めてどれでも棒グラフに変更可能） ---
         document.getElementById('barTargetSelect').addEventListener('change', (e) => {
             const selectedIndex = parseInt(e.target.value);
             wheelChart.data.datasets.forEach((ds, index) => {
-                if (index === 3) return; 
                 if (index === selectedIndex) {
                     ds.type = 'bar';
                     ds.backgroundColor = metricStyles[index].bgColor;
