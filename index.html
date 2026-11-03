@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>回し車 リアルタイムカウンター</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 15px; text-align: center; }
+        .controls { margin-bottom: 12px; }
+        button, input, select { padding: 10px 14px; font-size: 15px; margin: 4px; cursor: pointer; }
+        #chartContainer { width: 100%; max-width: 600px; margin: 0 auto; }
+        #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; }
+    </style>
+</head>
+<body>
+
+    <h2>回し車ダッシュボード</h2>
+    
+    <div class="controls">
+        <button id="connectBtn">Bluetooth 接続</button>
+    </div>
+
+    <!-- 棒グラフ対象の選択メニュー -->
+    <div class="controls">
+        <label for="barTargetSelect">棒グラフの対象: </label>
+        <select id="barTargetSelect">
+            <option value="2" selected>運動時間 (分)</option>
+            <option value="0">回転数 (回)</option>
+            <option value="1">平均速度 (cm/s)</option>
+        </select>
+    </div>
+
+    <!-- 日付操作・管理コントロール -->
+    <div class="controls">
+        <button id="prevDayBtn">◀ 前日</button>
+        <input type="date" id="dateFilter">
+        <button id="nextDayBtn">翌日 ▶</button>
+        <button id="filterBtn">指定日を表示</button>
+        <button id="resetBtn">最新に戻る</button>
+        <button id="downloadCsvBtn" style="background-color: #e8f5e9; border: 1px solid #4caf50;">CSV保存</button>
+        <button id="clearBtn" style="color: red;">データ全消去</button>
+    </div>
+
+    <div id="chartContainer">
+        <canvas id="wheelChart"></canvas>
+    </div>
+
+    <!-- 集計結果表示エリア -->
+    <div id="statsContainer">
+        <b>【選択日の確定データ】</b><br>
+        総運動時間: <span id="totalDuration">--</span> 分<br>
+        平均速度: <span id="avgSpeed">--</span> cm/s<br>
+        総回転数: <span id="totalRpm">--</span> 回
+    </div>
+
+    <script>
+        // --- スタイル定義（0:回転数, 1:速度, 2:時間） ---
+        const metricStyles = [
+            { borderColor: 'rgb(75, 192, 192)', bgColor: 'rgba(75, 192, 192, 0.3)' }, // 回転数 (青緑)
+            { borderColor: 'rgb(255, 99, 132)',  bgColor: 'rgba(255, 99, 132, 0.3)' },  // 平均速度 (赤)
+            { borderColor: 'rgb(54, 162, 235)',  bgColor: 'rgba(54, 162, 235, 0.3)' }   // 運動時間 (青)
+        ];
+
+        // --- 1. Chart.js の初期設定（初期状態: 運動時間のみ棒グラフ） ---
+        const ctx = document.getElementById('wheelChart').getContext('2d');
+        const wheelChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: '回転数 (回)',
+                        type: 'line',
+                        data: [],
+                        borderColor: metricStyles[0].borderColor,
+                        backgroundColor: 'transparent',
+                        yAxisID: 'y',
+                        tension: 0.1,
+                        order: 1
+                    },
+                    {
+                        label: '平均速度 (cm/s)',
+                        type: 'line',
+                        data: [],
+                        borderColor: metricStyles[1].borderColor,
+                        backgroundColor: 'transparent',
+                        yAxisID: 'y2',
+                        tension: 0.1,
+                        order: 1
+                    },
+                    {
+                        label: '運動時間 (分)',
+                        type: 'bar',
+                        data: [],
+                        borderColor: metricStyles[2].borderColor,
+                        backgroundColor: metricStyles[2].bgColor,
+                        borderWidth: 1,
+                        yAxisID: 'y2',
+                        order: 2
+                    }
+                ]
+            },
+            options: {
+                scales: {
+                    y: { type: 'linear', display: true, position: 'left' },
+                    y2: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+
+        // --- 2. グラフ描画ヘルパー（最新N件を再構築） ---
+        function renderRecentData(limit = 50) {
+            const history = JSON.parse(localStorage.getItem('wheelData3Vals')) || [];
+            wheelChart.data.labels = [];
+            wheelChart.data.datasets[0].data = [];
+            wheelChart.data.datasets[1].data = [];
+            wheelChart.data.datasets[2].data = [];
+
+            const recentData = history.slice(-limit);
+            recentData.forEach(item => {
+                wheelChart.data.labels.push(item.time);
+                wheelChart.data.datasets[0].data.push(item.rpm);
+                wheelChart.data.datasets[1].data.push(item.speed);
+                wheelChart.data.datasets[2].data.push(item.duration);
+            });
+            wheelChart.update();
+        }
+        renderRecentData(50); // 初回起動時に実行
+
+        // --- 3. Bluetooth 接続と受信処理 ---
+        const connectBtn = document.getElementById('connectBtn');
+        let receiveBuffer = "";
+
+        connectBtn.addEventListener('click', async () => {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [0xFFE0] }]
+                });
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(0xFFE0);
+                const characteristic = await service.getCharacteristic(0xFFE1);
+
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', handleData);
+                connectBtn.textContent = "接続済み";
+            } catch (error) {
+                console.error(error);
+                alert("接続に失敗しました。");
+            }
+        });
+
+        function handleData(event) {
+            const text = new TextDecoder().decode(event.target.value);
+            receiveBuffer += text;
+            let lines = receiveBuffer.split('\n');
+            receiveBuffer = lines.pop(); 
+
+            for (let line of lines) {
+                line = line.trim();
+                if (line.length > 0) processCSV(line);
+            }
+        }
+
+        // --- 4. データの受信処理（日付後勝ち上書きロジック） ---
+        // 送信形式: "YYYY-MM-DD,回転数,平均速度,運動時間"
+        function processCSV(csvLine) {
+            const values = csvLine.split(',');
+            if (values.length < 4) return; 
+
+            const dateValue = values[0].trim();
+            const rpmValue = parseFloat(values[1]);
+            const speedValue = parseFloat(values[2]);
+            const timeValue = parseFloat(values[3]);
+            
+            if (!dateValue || isNaN(rpmValue) || isNaN(speedValue) || isNaN(timeValue)) return; 
+
+            let history = JSON.parse(localStorage.getItem('wheelData3Vals')) || [];
+
+            const existingIndex = history.findIndex(item => item.time === dateValue);
+            const record = {
+                time: dateValue,
+                rpm: rpmValue,
+                speed: speedValue,
+                duration: timeValue
+            };
+
+            if (existingIndex !== -1) {
+                // 同じ日付が存在する場合は最新データで上書き（後勝ち）
+                history[existingIndex] = record;
+                console.log(`日付 ${dateValue} のデータを最新値で上書きしました。`);
+            } else {
+                // 新規日付の場合は追加
+                history.push(record);
+                if (history.length > 10000) history.shift();
+            }
+
+            localStorage.setItem('wheelData3Vals', JSON.stringify(history));
+            renderRecentData(50);
+        }
+
+        // --- 5. 棒グラフ項目の動的切替 ---
+        document.getElementById('barTargetSelect').addEventListener('change', (e) => {
+            const selectedIndex = parseInt(e.target.value);
+
+            wheelChart.data.datasets.forEach((ds, index) => {
+                if (index === selectedIndex) {
+                    ds.type = 'bar';
+                    ds.backgroundColor = metricStyles[index].bgColor;
+                    ds.borderColor = metricStyles[index].borderColor;
+                    ds.borderWidth = 1;
+                    ds.order = 2; // 背面配置
+                } else {
+                    ds.type = 'line';
+                    ds.backgroundColor = 'transparent';
+                    ds.borderColor = metricStyles[index].borderColor;
+                    ds.borderWidth = 2;
+                    ds.tension = 0.1;
+                    ds.order = 1; // 前面配置
+                }
+            });
+            wheelChart.update();
+        });
+
+        // --- 6. 日付指定表示の共通処理 ＆ 前日・翌日ナビゲーション ---
+        const dateFilter = document.getElementById('dateFilter');
+
+        function showDateData(targetDateStr) {
+            const history = JSON.parse(localStorage.getItem('wheelData3Vals')) || [];
+            const targetRecord = history.find(item => item.time === targetDateStr);
+
+            dateFilter.value = targetDateStr;
+
+            if (!targetRecord) {
+                document.getElementById('totalDuration').textContent = "--";
+                document.getElementById('avgSpeed').textContent = "--";
+                document.getElementById('totalRpm').textContent = "--";
+
+                wheelChart.data.labels = [targetDateStr + " (データなし)"];
+                wheelChart.data.datasets[0].data = [0];
+                wheelChart.data.datasets[1].data = [0];
+                wheelChart.data.datasets[2].data = [0];
+                wheelChart.update();
+                return;
+            }
+
+            // 統計テキストの反映
+            document.getElementById('totalDuration').textContent = targetRecord.duration;
+            document.getElementById('avgSpeed').textContent = targetRecord.speed.toFixed(1);
+            document.getElementById('totalRpm').textContent = targetRecord.rpm.toLocaleString();
+
+            // グラフを該当日の1レコードに更新
+            wheelChart.data.labels = [targetRecord.time];
+            wheelChart.data.datasets[0].data = [targetRecord.rpm];
+            wheelChart.data.datasets[1].data = [targetRecord.speed];
+            wheelChart.data.datasets[2].data = [targetRecord.duration];
+            wheelChart.update();
+        }
+
+        // 指定日ボタンの処理
+        document.getElementById('filterBtn').addEventListener('click', () => {
+            if (!dateFilter.value) {
+                alert("日付を選択してください。");
+                return;
+            }
+            showDateData(dateFilter.value);
+        });
+
+        // 日付加減算ヘルパー関数
+        function shiftDate(days) {
+            let baseDateStr = dateFilter.value;
+            let baseDate = baseDateStr ? new Date(baseDateStr) : new Date();
+
+            baseDate.setDate(baseDate.getDate() + days);
+
+            const yyyy = baseDate.getFullYear();
+            const mm = String(baseDate.getMonth() + 1).padStart(2, '0');
+            const dd = String(baseDate.getDate()).padStart(2, '0');
+            const newDateStr = `${yyyy}-${mm}-${dd}`;
+
+            showDateData(newDateStr);
+        }
+
+        document.getElementById('prevDayBtn').addEventListener('click', () => shiftDate(-1));
+        document.getElementById('nextDayBtn').addEventListener('click', () => shiftDate(1));
+
+        // --- 7. 最新の記録表示（直近50件）に戻す ---
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            renderRecentData(50);
+            dateFilter.value = "";
+            document.getElementById('totalDuration').textContent = "--";
+            document.getElementById('avgSpeed').textContent = "--";
+            document.getElementById('totalRpm').textContent = "--";
+        });
+
+        // --- 8. CSV一括ダウンロード保存（UTF-8 BOM付き） ---
+        document.getElementById('downloadCsvBtn').addEventListener('click', () => {
+            const history = JSON.parse(localStorage.getItem('wheelData3Vals')) || [];
+
+            if (history.length === 0) {
+                alert("保存するデータがありません。");
+                return;
+            }
+
+            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分)\r\n";
+            history.forEach(item => {
+                csvContent += `${item.time},${item.rpm},${item.speed},${item.duration}\r\n`;
+            });
+
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+
+            const today = new Date().toISOString().split('T')[0];
+            const fileName = `wheel_data_${today}.csv`;
+
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        });
+
+        // --- 9. データの全消去（リセット） ---
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            if (confirm("本当に過去のすべてのデータを消去しますか？\n※この操作は取り消せません。")) {
+                localStorage.removeItem('wheelData3Vals');
+                renderRecentData(50);
+                dateFilter.value = "";
+                document.getElementById('totalDuration').textContent = "--";
+                document.getElementById('avgSpeed').textContent = "--";
+                document.getElementById('totalRpm').textContent = "--";
+                alert("すべての記録を消去しました。");
+            }
+        });
+    </script>
+</body>
+</html>
