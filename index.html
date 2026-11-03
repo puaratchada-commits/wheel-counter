@@ -11,7 +11,7 @@
         button, input, select { padding: 10px 14px; font-size: 15px; margin: 4px; cursor: pointer; }
         #chartContainer { width: 100%; max-width: 600px; margin: 0 auto; }
         #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; }
-        .device-box { background: #e3f2fd; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
+        .device-box { background: #e3f2fd; padding: 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
         .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
         .import-box { background: #fff3e0; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; }
     </style>
@@ -20,10 +20,14 @@
 
     <h2>回し車 マルチダッシュボード</h2>
     
-    <!-- 接続・デバイス管理コントロール -->
+    <!-- 個体切り替え・接続コントロール -->
     <div class="device-box">
-        <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold;">Bluetooth 接続</button><br>
-        <span style="font-size: 13px; color: #555;">接続中ID: <span id="currentDeviceLabel">未接続 (デフォルト)</span></span>
+        <label for="deviceSelect"><b>表示する個体:</b> </label>
+        <select id="deviceSelect" style="font-weight: bold; color: #0d47a1;">
+            <!-- 動的に生成されます -->
+        </select><br>
+        <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold; margin-top: 6px;">Bluetooth 接続（現在の個体に紐付け）</button><br>
+        <button id="renameBtn" style="font-size: 13px; padding: 4px 8px; margin-top: 4px;">選択中の名前にカスタム名を設定</button>
     </div><br>
 
     <!-- 体重手動入力コントロール -->
@@ -39,7 +43,7 @@
         <input type="file" id="importCsvFile" accept=".csv" style="font-size: 14px;">
     </div>
 
-    <!-- 棒グラフ対象の選択メニュー（体重を追加） -->
+    <!-- 棒グラフ対象の選択メニュー -->
     <div class="controls">
         <label for="barTargetSelect">棒グラフの対象: </label>
         <select id="barTargetSelect">
@@ -67,7 +71,8 @@
 
     <!-- 集計結果表示エリア -->
     <div id="statsContainer">
-        <b>【選択デバイス・日の確定データ】</b><br>
+        <b>【選択個体・日の確定データ】</b><br>
+        対象個体: <span id="displayDeviceName" style="color: #d32f2f; font-weight: bold;">--</span><br>
         体重: <span id="displayWeight">--</span> g<br>
         総運動時間: <span id="totalDuration">--</span> 分<br>
         平均速度: <span id="avgSpeed">--</span> cm/s<br>
@@ -75,20 +80,65 @@
     </div>
 
     <script>
-        // 現在接続・選択されているデバイスID（ストレージキー用）
-        let activeDeviceKey = localStorage.getItem('activeWheelDeviceKey') || 'default_device';
-        document.getElementById('currentDeviceLabel').textContent = activeDeviceKey;
-
-        function getStorageKey() {
-            return `wheelData_${activeDeviceKey}`;
+        // --- 複数個体・名前管理システム ---
+        function getDeviceNamesMap() {
+            return JSON.parse(localStorage.getItem('wheelDeviceNamesMap')) || {};
         }
 
-        // --- スタイル定義（0:回転数, 1:速度, 2:時間, 3:体重） ---
+        // 登録されている全デバイスID（またはカスタム名）のリストを構築し、プルダウンを更新
+        function updateDeviceSelectOptions(selectedKey = null) {
+            const map = getDeviceNamesMap();
+            const deviceSelect = document.getElementById('deviceSelect');
+            deviceSelect.innerHTML = '';
+
+            // ローカルストレージ内の "wheelData_..." から保存済み個体も自動検出
+            let keys = Object.keys(map);
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k.startsWith('wheelData_')) {
+                    const devName = k.replace('wheelData_', '');
+                    if (!keys.includes(devName) && !Object.values(map).includes(devName)) {
+                        keys.push(devName);
+                    }
+                }
+            }
+
+            if (keys.length === 0) {
+                keys = ['GIGI-01']; // デフォルト
+            }
+
+            keys.forEach(key => {
+                const displayName = map[key] || key;
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = displayName;
+                deviceSelect.appendChild(opt);
+            });
+
+            if (selectedKey && [...deviceSelect.options].some(o => o.value === selectedKey)) {
+                deviceSelect.value = selectedKey;
+            }
+        }
+
+        // 現在プルダウンで選択されている個体名を取得
+        function getCurrentDeviceKey() {
+            const deviceSelect = document.getElementById('deviceSelect');
+            return deviceSelect.value || 'GIGI-01';
+        }
+
+        function getStorageKey() {
+            return `wheelData_${getCurrentDeviceKey()}`;
+        }
+
+        // 初期化時にプルダウン作成
+        updateDeviceSelectOptions(localStorage.getItem('activeSelectedDevice') || 'GIGI-01');
+
+        // --- スタイル定義 ---
         const metricStyles = [
-            { borderColor: 'rgb(75, 192, 192)', bgColor: 'rgba(75, 192, 192, 0.3)' }, // 回転数
-            { borderColor: 'rgb(255, 99, 132)',  bgColor: 'rgba(255, 99, 132, 0.3)' },  // 平均速度
-            { borderColor: 'rgb(54, 162, 235)',  bgColor: 'rgba(54, 162, 235, 0.3)' },  // 運動時間
-            { borderColor: 'rgb(156, 39, 176)',  bgColor: 'rgba(156, 39, 176, 0.3)' }   // 体重 (紫)
+            { borderColor: 'rgb(75, 192, 192)', bgColor: 'rgba(75, 192, 192, 0.3)' }, 
+            { borderColor: 'rgb(255, 99, 132)',  bgColor: 'rgba(255, 99, 132, 0.3)' },  
+            { borderColor: 'rgb(54, 162, 235)',  bgColor: 'rgba(54, 162, 235, 0.3)' },  
+            { borderColor: 'rgb(156, 39, 176)',  bgColor: 'rgba(156, 39, 176, 0.3)' }   
         ];
 
         // --- 1. Chart.js の初期設定 ---
@@ -115,6 +165,10 @@
 
         // --- 2. グラフ描画ヘルパー ---
         function renderRecentData(limit = 50) {
+            const currentKey = getCurrentDeviceKey();
+            localStorage.setItem('activeSelectedDevice', currentKey);
+            document.getElementById('displayDeviceName').textContent = currentKey;
+
             const history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             wheelChart.data.labels = [];
             wheelChart.data.datasets[0].data = [];
@@ -134,9 +188,20 @@
         }
         renderRecentData(50);
 
-        // --- 3. Bluetooth 接続とデバイスIDの自動取得 ---
+        // プルダウンを変更したら即座にグラフやデータを切り替え
+        document.getElementById('deviceSelect').addEventListener('change', () => {
+            renderRecentData(50);
+            document.getElementById('dateFilter').value = "";
+            document.getElementById('displayWeight').textContent = "--";
+            document.getElementById('totalDuration').textContent = "--";
+            document.getElementById('avgSpeed').textContent = "--";
+            document.getElementById('totalRpm').textContent = "--";
+        });
+
+        // --- 3. Bluetooth 接続とデータ受信 ---
         const connectBtn = document.getElementById('connectBtn');
         let receiveBuffer = "";
+        let activeConnectedDevice = null;
 
         connectBtn.addEventListener('click', async () => {
             try {
@@ -151,18 +216,52 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
                 
-                activeDeviceKey = device.id;
-                localStorage.setItem('activeWheelDeviceKey', activeDeviceKey);
+                activeConnectedDevice = device.id;
                 
-                const displayName = device.name ? `${device.name} (${device.id.slice(0, 6)}...)` : device.id;
-                document.getElementById('currentDeviceLabel').textContent = displayName;
-                connectBtn.textContent = "接続済み";
+                // もしこのデバイスIDにカスタム名がすでにあれば自動でプルダウンを選択
+                const map = getDeviceNamesMap();
+                if (map[activeConnectedDevice]) {
+                    updateDeviceSelectOptions(map[activeConnectedDevice]);
+                } else {
+                    // なければ現在のプルダウン選択中に紐付ける
+                    map[activeConnectedDevice] = getCurrentDeviceKey();
+                    localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
+                }
 
+                connectBtn.textContent = "Bluetooth 接続済み";
                 renderRecentData(50);
-                alert(`デバイス [${displayName}] に接続しました！`);
+                alert(`デバイスに接続しました！ データは [${getCurrentDeviceKey()}] に記録されます。`);
             } catch (error) {
                 console.error(error);
                 alert("接続に失敗しました。");
+            }
+        });
+
+        // --- 4. カスタム名の変更・新規追加ボタン ---
+        document.getElementById('renameBtn').addEventListener('click', () => {
+            const currentKey = getCurrentDeviceKey();
+            const newName = prompt("現在選択している個体の新しい名前（例: GIGI-02）を入力してください:", currentKey);
+            
+            if (newName && newName.trim() !== "" && newName.trim() !== currentKey) {
+                const trimmedName = newName.trim();
+                
+                // 古いキーのデータを新しいキーへ移行
+                const oldData = localStorage.getItem(`wheelData_${currentKey}`);
+                if (oldData) {
+                    localStorage.setItem(`wheelData_${trimmedName}`, oldData);
+                    localStorage.removeItem(`wheelData_${currentKey}`);
+                }
+
+                // マップを更新
+                const map = getDeviceNamesMap();
+                if (activeConnectedDevice) {
+                    map[activeConnectedDevice] = trimmedName;
+                }
+                localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
+
+                updateDeviceSelectOptions(trimmedName);
+                renderRecentData(50);
+                alert(`個体名を [${trimmedName}] に変更しました！`);
             }
         });
 
@@ -178,7 +277,7 @@
             }
         }
 
-        // --- 4. データの受信処理 ---
+        // --- 5. データの受信処理 ---
         function processCSV(csvLine) {
             const values = csvLine.split(',');
             if (values.length < 4) return; 
@@ -206,7 +305,7 @@
             renderRecentData(50);
         }
 
-        // --- 5. 体重の手動保存処理 ---
+        // --- 6. 体重の手動保存処理 ---
         const weightInput = document.getElementById('weightInput');
         document.getElementById('saveWeightBtn').addEventListener('click', () => {
             const weightVal = parseFloat(weightInput.value);
@@ -231,11 +330,11 @@
             }
 
             localStorage.setItem(getStorageKey(), JSON.stringify(history));
-            alert(`選択中デバイスの ${targetDateStr} の体重 ${weightVal}g を保存しました！`);
+            alert(`[${getCurrentDeviceKey()}] ${targetDateStr} の体重 ${weightVal}g を保存しました！`);
             showDateData(targetDateStr);
         });
 
-        // --- 6. CSVインポート（ファイル読み込み・データ統合）処理 ---
+        // --- 7. CSVインポート処理 ---
         document.getElementById('importCsvFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -284,14 +383,15 @@
                 history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
                 localStorage.setItem(getStorageKey(), JSON.stringify(history));
+                updateDeviceSelectOptions(getCurrentDeviceKey());
                 renderRecentData(50);
-                alert(`${importedCount} 件のデータをインポートしました！`);
+                alert(`[${getCurrentDeviceKey()}] に ${importedCount} 件のデータをインポートしました！`);
                 e.target.value = "";
             };
             reader.readAsText(file, 'UTF-8');
         });
 
-        // --- 7. 棒グラフ項目の動的切替（体重も含めてどれでも棒グラフに変更可能） ---
+        // --- 8. 棒グラフ項目の動的切替 ---
         document.getElementById('barTargetSelect').addEventListener('change', (e) => {
             const selectedIndex = parseInt(e.target.value);
             wheelChart.data.datasets.forEach((ds, index) => {
@@ -313,7 +413,7 @@
             wheelChart.update();
         });
 
-        // --- 8. 日付指定表示 ＆ 前日・翌日ナビゲーション ---
+        // --- 9. 日付指定表示 ＆ 前日・翌日ナビゲーション ---
         const dateFilter = document.getElementById('dateFilter');
 
         function showDateData(targetDateStr) {
@@ -378,7 +478,7 @@
             document.getElementById('totalRpm').textContent = "--";
         });
 
-        // --- 9. CSV一括ダウンロード ---
+        // --- 10. CSV一括ダウンロード ---
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             const history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
@@ -394,16 +494,17 @@
             const today = new Date().toISOString().split('T')[0];
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `wheel_data_${activeDeviceKey.slice(0, 8)}_${today}.csv`;
+            link.download = `${getCurrentDeviceName()}_wheel_data_${today}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
         });
 
-        // --- 10. データ全消去 ---
+        // --- 11. 選択中個体のデータ全消去 ---
         document.getElementById('clearBtn').addEventListener('click', () => {
-            if (confirm("本当に現在接続中のデバイスのすべてのデータを消去しますか？")) {
+            const currentName = getCurrentDeviceKey();
+            if (confirm(`本当に個体 [${currentName}] のすべてのデータを消去しますか？`)) {
                 localStorage.removeItem(getStorageKey());
                 renderRecentData(50);
                 dateFilter.value = "";
@@ -411,7 +512,7 @@
                 document.getElementById('totalDuration').textContent = "--";
                 document.getElementById('avgSpeed').textContent = "--";
                 document.getElementById('totalRpm').textContent = "--";
-                alert("データを消去しました。");
+                alert(`個体 [${currentName}] のデータを消去しました。`);
             }
         });
     </script>
