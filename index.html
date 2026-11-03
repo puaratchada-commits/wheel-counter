@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>回し車 リアルタイムカウンター</title>
+    <title>回し車 アドレス管理マルチダッシュボード</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; padding: 15px; text-align: center; }
@@ -11,14 +11,25 @@
         button, input, select { padding: 10px 14px; font-size: 15px; margin: 4px; cursor: pointer; }
         #chartContainer { width: 100%; max-width: 600px; margin: 0 auto; }
         #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; }
+        .device-box { background: #e3f2fd; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
+        .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
     </style>
 </head>
 <body>
 
-    <h2>回し車ダッシュボード</h2>
+    <h2>回し車 アドレス管理ダッシュボード</h2>
     
-    <div class="controls">
-        <button id="connectBtn">Bluetooth 接続</button>
+    <!-- 接続・個体管理コントロール -->
+    <div class="device-box">
+        <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold;">Bluetooth 接続（デバイス選択）</button><br>
+        <span style="font-size: 13px; color: #555;">接続中ID: <span id="currentDeviceLabel">未接続 (デフォルト)</span></span>
+    </div><br>
+
+    <!-- 体重手動入力コントロール -->
+    <div class="weight-box">
+        <label for="weightInput">今日の体重 (g): </label>
+        <input type="number" id="weightInput" step="0.1" placeholder="例: 35.2" style="width: 90px;">
+        <button id="saveWeightBtn">体重を保存</button>
     </div>
 
     <!-- 棒グラフ対象の選択メニュー -->
@@ -48,102 +59,102 @@
 
     <!-- 集計結果表示エリア -->
     <div id="statsContainer">
-        <b>【選択日の確定データ】</b><br>
+        <b>【選択デバイス・日の確定データ】</b><br>
+        体重: <span id="displayWeight">--</span> g<br>
         総運動時間: <span id="totalDuration">--</span> 分<br>
         平均速度: <span id="avgSpeed">--</span> cm/s<br>
         総回転数: <span id="totalRpm">--</span> 回
     </div>
 
     <script>
-        // --- スタイル定義（0:回転数, 1:速度, 2:時間） ---
+        // 現在接続・選択されているデバイスID（ストレージキー用）
+        let activeDeviceKey = localStorage.getItem('activeWheelDeviceKey') || 'default_device';
+        document.getElementById('currentDeviceLabel').textContent = activeDeviceKey;
+
+        function getStorageKey() {
+            return `wheelData_${activeDeviceKey}`;
+        }
+
+        // --- スタイル定義 ---
         const metricStyles = [
-            { borderColor: 'rgb(75, 192, 192)', bgColor: 'rgba(75, 192, 192, 0.3)' }, // 回転数 (青緑)
-            { borderColor: 'rgb(255, 99, 132)',  bgColor: 'rgba(255, 99, 132, 0.3)' },  // 平均速度 (赤)
-            { borderColor: 'rgb(54, 162, 235)',  bgColor: 'rgba(54, 162, 235, 0.3)' }   // 運動時間 (青)
+            { borderColor: 'rgb(75, 192, 192)', bgColor: 'rgba(75, 192, 192, 0.3)' }, // 回転数
+            { borderColor: 'rgb(255, 99, 132)',  bgColor: 'rgba(255, 99, 132, 0.3)' },  // 平均速度
+            { borderColor: 'rgb(54, 162, 235)',  bgColor: 'rgba(54, 162, 235, 0.3)' }   // 運動時間
         ];
 
-        // --- 1. Chart.js の初期設定（初期状態: 運動時間のみ棒グラフ） ---
+        // --- 1. Chart.js の初期設定 ---
         const ctx = document.getElementById('wheelChart').getContext('2d');
         const wheelChart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: [],
                 datasets: [
-                    {
-                        label: '回転数 (回)',
-                        type: 'line',
-                        data: [],
-                        borderColor: metricStyles[0].borderColor,
-                        backgroundColor: 'transparent',
-                        yAxisID: 'y',
-                        tension: 0.1,
-                        order: 1
-                    },
-                    {
-                        label: '平均速度 (cm/s)',
-                        type: 'line',
-                        data: [],
-                        borderColor: metricStyles[1].borderColor,
-                        backgroundColor: 'transparent',
-                        yAxisID: 'y2',
-                        tension: 0.1,
-                        order: 1
-                    },
-                    {
-                        label: '運動時間 (分)',
-                        type: 'bar',
-                        data: [],
-                        borderColor: metricStyles[2].borderColor,
-                        backgroundColor: metricStyles[2].bgColor,
-                        borderWidth: 1,
-                        yAxisID: 'y2',
-                        order: 2
-                    }
+                    { label: '回転数 (回)', type: 'line', data: [], borderColor: metricStyles[0].borderColor, backgroundColor: 'transparent', yAxisID: 'y', tension: 0.1, order: 1 },
+                    { label: '平均速度 (cm/s)', type: 'line', data: [], borderColor: metricStyles[1].borderColor, backgroundColor: 'transparent', yAxisID: 'y2', tension: 0.1, order: 1 },
+                    { label: '運動時間 (分)', type: 'bar', data: [], borderColor: metricStyles[2].borderColor, backgroundColor: metricStyles[2].bgColor, borderWidth: 1, yAxisID: 'y2', order: 2 },
+                    { label: '体重 (g)', type: 'line', data: [], borderColor: 'rgb(156, 39, 176)', backgroundColor: 'transparent', yAxisID: 'y3', tension: 0.1, order: 1 }
                 ]
             },
             options: {
                 scales: {
                     y: { type: 'linear', display: true, position: 'left' },
-                    y2: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false } }
+                    y2: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false } },
+                    y3: { type: 'linear', display: false, position: 'right' }
                 }
             }
         });
 
-        // --- 2. グラフ描画ヘルパー（最新N件を再構築） ---
+        // --- 2. グラフ描画ヘルパー ---
         function renderRecentData(limit = 50) {
-            const history = JSON.parse(localStorage.getItem('wheelData3Vals')) || [];
+            const history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             wheelChart.data.labels = [];
             wheelChart.data.datasets[0].data = [];
             wheelChart.data.datasets[1].data = [];
             wheelChart.data.datasets[2].data = [];
+            wheelChart.data.datasets[3].data = [];
 
             const recentData = history.slice(-limit);
             recentData.forEach(item => {
                 wheelChart.data.labels.push(item.time);
-                wheelChart.data.datasets[0].data.push(item.rpm);
-                wheelChart.data.datasets[1].data.push(item.speed);
-                wheelChart.data.datasets[2].data.push(item.duration);
+                wheelChart.data.datasets[0].data.push(item.rpm || 0);
+                wheelChart.data.datasets[1].data.push(item.speed || 0);
+                wheelChart.data.datasets[2].data.push(item.duration || 0);
+                wheelChart.data.datasets[3].data.push(item.weight !== undefined ? item.weight : null);
             });
             wheelChart.update();
         }
-        renderRecentData(50); // 初回起動時に実行
+        renderRecentData(50);
 
-        // --- 3. Bluetooth 接続と受信処理 ---
+        // --- 3. Bluetooth 接続とデバイスID（アドレス）の自動取得 ---
         const connectBtn = document.getElementById('connectBtn');
         let receiveBuffer = "";
 
         connectBtn.addEventListener('click', async () => {
             try {
+                // フィルターなし、またはサービスUUID(0xFFE0)を持つすべてのデバイスを一覧表示
                 const device = await navigator.bluetooth.requestDevice({
                     filters: [{ services: [0xFFE0] }]
                 });
+
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(0xFFE0);
                 const characteristic = await service.getCharacteristic(0xFFE1);
 
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
+                
+                // ブラウザが割り振る固有のデバイスID（MACアドレス等に基づく一意のID）を取得
+                activeDeviceKey = device.id;
+                localStorage.setItem('activeWheelDeviceKey', activeDeviceKey);
+                
+                // 表示名を更新（デバイス名があればそれを優先、なければIDの一部を表示）
+                const displayName = device.name ? `${device.name} (${device.id.slice(0, 6)}...)` : device.id;
+                document.getElementById('currentDeviceLabel').textContent = displayName;
                 connectBtn.textContent = "接続済み";
+
+                // 接続したデバイスのストレージデータを読み込み直す
+                renderRecentData(50);
+                alert(`デバイス [${displayName}] に接続しました！`);
             } catch (error) {
                 console.error(error);
                 alert("接続に失敗しました。");
@@ -162,8 +173,7 @@
             }
         }
 
-        // --- 4. データの受信処理（日付後勝ち上書きロジック） ---
-        // 送信形式: "YYYY-MM-DD,回転数,平均速度,運動時間"
+        // --- 4. データの受信処理（現在接続中のデバイスIDストレージへ保存） ---
         function processCSV(csvLine) {
             const values = csvLine.split(',');
             if (values.length < 4) return; 
@@ -175,63 +185,85 @@
             
             if (!dateValue || isNaN(rpmValue) || isNaN(speedValue) || isNaN(timeValue)) return; 
 
-            let history = JSON.parse(localStorage.getItem('wheelData3Vals')) || [];
-
+            let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             const existingIndex = history.findIndex(item => item.time === dateValue);
-            const record = {
-                time: dateValue,
-                rpm: rpmValue,
-                speed: speedValue,
-                duration: timeValue
-            };
-
+            
             if (existingIndex !== -1) {
-                // 同じ日付が存在する場合は最新データで上書き（後勝ち）
-                history[existingIndex] = record;
-                console.log(`日付 ${dateValue} のデータを最新値で上書きしました。`);
+                history[existingIndex].rpm = rpmValue;
+                history[existingIndex].speed = speedValue;
+                history[existingIndex].duration = timeValue;
             } else {
-                // 新規日付の場合は追加
-                history.push(record);
+                history.push({ time: dateValue, rpm: rpmValue, speed: speedValue, duration: timeValue, weight: undefined });
                 if (history.length > 10000) history.shift();
             }
 
-            localStorage.setItem('wheelData3Vals', JSON.stringify(history));
+            localStorage.setItem(getStorageKey(), JSON.stringify(history));
             renderRecentData(50);
         }
 
-        // --- 5. 棒グラフ項目の動的切替 ---
+        // --- 5. 体重の手動保存処理 ---
+        const weightInput = document.getElementById('weightInput');
+        document.getElementById('saveWeightBtn').addEventListener('click', () => {
+            const weightVal = parseFloat(weightInput.value);
+            if (isNaN(weightVal)) {
+                alert("有効な体重の数値を入力してください。");
+                return;
+            }
+
+            let targetDateStr = document.getElementById('dateFilter').value;
+            if (!targetDateStr) {
+                const today = new Date();
+                targetDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            }
+
+            let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+            let existingIndex = history.findIndex(item => item.time === targetDateStr);
+
+            if (existingIndex !== -1) {
+                history[existingIndex].weight = weightVal;
+            } else {
+                history.push({ time: targetDateStr, rpm: 0, speed: 0, duration: 0, weight: weightVal });
+            }
+
+            localStorage.setItem(getStorageKey(), JSON.stringify(history));
+            alert(`選択中デバイスの ${targetDateStr} の体重 ${weightVal}g を保存しました！`);
+            showDateData(targetDateStr);
+        });
+
+        // --- 6. 棒グラフ項目の動的切替 ---
         document.getElementById('barTargetSelect').addEventListener('change', (e) => {
             const selectedIndex = parseInt(e.target.value);
-
             wheelChart.data.datasets.forEach((ds, index) => {
+                if (index === 3) return; 
                 if (index === selectedIndex) {
                     ds.type = 'bar';
                     ds.backgroundColor = metricStyles[index].bgColor;
                     ds.borderColor = metricStyles[index].borderColor;
                     ds.borderWidth = 1;
-                    ds.order = 2; // 背面配置
+                    ds.order = 2;
                 } else {
                     ds.type = 'line';
                     ds.backgroundColor = 'transparent';
                     ds.borderColor = metricStyles[index].borderColor;
                     ds.borderWidth = 2;
                     ds.tension = 0.1;
-                    ds.order = 1; // 前面配置
+                    ds.order = 1;
                 }
             });
             wheelChart.update();
         });
 
-        // --- 6. 日付指定表示の共通処理 ＆ 前日・翌日ナビゲーション ---
+        // --- 7. 日付指定表示 ＆ 前日・翌日ナビゲーション ---
         const dateFilter = document.getElementById('dateFilter');
 
         function showDateData(targetDateStr) {
-            const history = JSON.parse(localStorage.getItem('wheelData3Vals')) || [];
+            const history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             const targetRecord = history.find(item => item.time === targetDateStr);
 
             dateFilter.value = targetDateStr;
 
             if (!targetRecord) {
+                document.getElementById('displayWeight').textContent = "--";
                 document.getElementById('totalDuration').textContent = "--";
                 document.getElementById('avgSpeed').textContent = "--";
                 document.getElementById('totalRpm').textContent = "--";
@@ -240,98 +272,86 @@
                 wheelChart.data.datasets[0].data = [0];
                 wheelChart.data.datasets[1].data = [0];
                 wheelChart.data.datasets[2].data = [0];
+                wheelChart.data.datasets[3].data = [null];
                 wheelChart.update();
                 return;
             }
 
-            // 統計テキストの反映
-            document.getElementById('totalDuration').textContent = targetRecord.duration;
-            document.getElementById('avgSpeed').textContent = targetRecord.speed.toFixed(1);
-            document.getElementById('totalRpm').textContent = targetRecord.rpm.toLocaleString();
+            document.getElementById('displayWeight').textContent = targetRecord.weight !== undefined ? targetRecord.weight : "--";
+            document.getElementById('totalDuration').textContent = targetRecord.duration || 0;
+            document.getElementById('avgSpeed').textContent = (targetRecord.speed || 0).toFixed(1);
+            document.getElementById('totalRpm').textContent = (targetRecord.rpm || 0).toLocaleString();
 
-            // グラフを該当日の1レコードに更新
             wheelChart.data.labels = [targetRecord.time];
-            wheelChart.data.datasets[0].data = [targetRecord.rpm];
-            wheelChart.data.datasets[1].data = [targetRecord.speed];
-            wheelChart.data.datasets[2].data = [targetRecord.duration];
+            wheelChart.data.datasets[0].data = [targetRecord.rpm || 0];
+            wheelChart.data.datasets[1].data = [targetRecord.speed || 0];
+            wheelChart.data.datasets[2].data = [targetRecord.duration || 0];
+            wheelChart.data.datasets[3].data = [targetRecord.weight !== undefined ? targetRecord.weight : null];
             wheelChart.update();
         }
 
-        // 指定日ボタンの処理
         document.getElementById('filterBtn').addEventListener('click', () => {
-            if (!dateFilter.value) {
-                alert("日付を選択してください。");
-                return;
-            }
+            if (!dateFilter.value) { alert("日付を選択してください。"); return; }
             showDateData(dateFilter.value);
         });
 
-        // 日付加減算ヘルパー関数
         function shiftDate(days) {
             let baseDateStr = dateFilter.value;
             let baseDate = baseDateStr ? new Date(baseDateStr) : new Date();
-
             baseDate.setDate(baseDate.getDate() + days);
 
             const yyyy = baseDate.getFullYear();
             const mm = String(baseDate.getMonth() + 1).padStart(2, '0');
             const dd = String(baseDate.getDate()).padStart(2, '0');
-            const newDateStr = `${yyyy}-${mm}-${dd}`;
-
-            showDateData(newDateStr);
+            showDateData(`${yyyy}-${mm}-${dd}`);
         }
 
         document.getElementById('prevDayBtn').addEventListener('click', () => shiftDate(-1));
         document.getElementById('nextDayBtn').addEventListener('click', () => shiftDate(1));
 
-        // --- 7. 最新の記録表示（直近50件）に戻す ---
         document.getElementById('resetBtn').addEventListener('click', () => {
             renderRecentData(50);
             dateFilter.value = "";
+            document.getElementById('displayWeight').textContent = "--";
             document.getElementById('totalDuration').textContent = "--";
             document.getElementById('avgSpeed').textContent = "--";
             document.getElementById('totalRpm').textContent = "--";
         });
 
-        // --- 8. CSV一括ダウンロード保存（UTF-8 BOM付き） ---
+        // --- 8. CSV一括ダウンロード ---
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
-            const history = JSON.parse(localStorage.getItem('wheelData3Vals')) || [];
+            const history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+            if (history.length === 0) { alert("保存するデータがありません。"); return; }
 
-            if (history.length === 0) {
-                alert("保存するデータがありません。");
-                return;
-            }
-
-            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分)\r\n";
+            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g)\r\n";
             history.forEach(item => {
-                csvContent += `${item.time},${item.rpm},${item.speed},${item.duration}\r\n`;
+                const w = item.weight !== undefined ? item.weight : "";
+                csvContent += `${item.time},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}\r\n`;
             });
 
             const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
             const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
-
             const today = new Date().toISOString().split('T')[0];
-            const fileName = `wheel_data_${today}.csv`;
-
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = fileName;
+            link.download = `wheel_data_${activeDeviceKey.slice(0, 8)}_${today}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
         });
 
-        // --- 9. データの全消去（リセット） ---
+        // --- 9. データ全消去 ---
         document.getElementById('clearBtn').addEventListener('click', () => {
-            if (confirm("本当に過去のすべてのデータを消去しますか？\n※この操作は取り消せません。")) {
-                localStorage.removeItem('wheelData3Vals');
+            if (confirm("本当に現在接続中のデバイスのすべてのデータを消去しますか？")) {
+                localStorage.removeItem(getStorageKey());
                 renderRecentData(50);
                 dateFilter.value = "";
+                document.getElementById('displayWeight').textContent = "--";
                 document.getElementById('totalDuration').textContent = "--";
                 document.getElementById('avgSpeed').textContent = "--";
                 document.getElementById('totalRpm').textContent = "--";
-                alert("すべての記録を消去しました。");
+                alert("データを消去しました。");
             }
         });
     </script>
