@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>回し車 アドレス管理マルチダッシュボード</title>
+    <title>回し車 & 体重 マルチダッシュボード</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; padding: 15px; text-align: center; }
@@ -13,15 +13,16 @@
         #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; }
         .device-box { background: #e3f2fd; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
         .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
+        .import-box { background: #fff3e0; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; }
     </style>
 </head>
 <body>
 
-    <h2>回し車 アドレス管理ダッシュボード</h2>
+    <h2>回し車 マルチダッシュボード</h2>
     
-    <!-- 接続・個体管理コントロール -->
+    <!-- 接続・デバイス管理コントロール -->
     <div class="device-box">
-        <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold;">Bluetooth 接続（デバイス選択）</button><br>
+        <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold;">Bluetooth 接続</button><br>
         <span style="font-size: 13px; color: #555;">接続中ID: <span id="currentDeviceLabel">未接続 (デフォルト)</span></span>
     </div><br>
 
@@ -30,6 +31,12 @@
         <label for="weightInput">今日の体重 (g): </label>
         <input type="number" id="weightInput" step="0.1" placeholder="例: 35.2" style="width: 90px;">
         <button id="saveWeightBtn">体重を保存</button>
+    </div>
+
+    <!-- CSVインポートコントロール -->
+    <div class="import-box">
+        <label for="importCsvFile" style="font-size: 14px; cursor: pointer;">CSVインポート: </label>
+        <input type="file" id="importCsvFile" accept=".csv" style="font-size: 14px;">
     </div>
 
     <!-- 棒グラフ対象の選択メニュー -->
@@ -125,13 +132,12 @@
         }
         renderRecentData(50);
 
-        // --- 3. Bluetooth 接続とデバイスID（アドレス）の自動取得 ---
+        // --- 3. Bluetooth 接続とデバイスIDの自動取得 ---
         const connectBtn = document.getElementById('connectBtn');
         let receiveBuffer = "";
 
         connectBtn.addEventListener('click', async () => {
             try {
-                // フィルターなし、またはサービスUUID(0xFFE0)を持つすべてのデバイスを一覧表示
                 const device = await navigator.bluetooth.requestDevice({
                     filters: [{ services: [0xFFE0] }]
                 });
@@ -143,16 +149,13 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
                 
-                // ブラウザが割り振る固有のデバイスID（MACアドレス等に基づく一意のID）を取得
                 activeDeviceKey = device.id;
                 localStorage.setItem('activeWheelDeviceKey', activeDeviceKey);
                 
-                // 表示名を更新（デバイス名があればそれを優先、なければIDの一部を表示）
                 const displayName = device.name ? `${device.name} (${device.id.slice(0, 6)}...)` : device.id;
                 document.getElementById('currentDeviceLabel').textContent = displayName;
                 connectBtn.textContent = "接続済み";
 
-                // 接続したデバイスのストレージデータを読み込み直す
                 renderRecentData(50);
                 alert(`デバイス [${displayName}] に接続しました！`);
             } catch (error) {
@@ -173,7 +176,7 @@
             }
         }
 
-        // --- 4. データの受信処理（現在接続中のデバイスIDストレージへ保存） ---
+        // --- 4. データの受信処理 ---
         function processCSV(csvLine) {
             const values = csvLine.split(',');
             if (values.length < 4) return; 
@@ -230,7 +233,63 @@
             showDateData(targetDateStr);
         });
 
-        // --- 6. 棒グラフ項目の動的切替 ---
+        // --- 6. CSVインポート（ファイル読み込み・データ統合）処理 ---
+        document.getElementById('importCsvFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const text = event.target.result;
+                const lines = text.split(/\r\n|\n/);
+                
+                let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+                let importedCount = 0;
+
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+
+                    const cols = line.split(',');
+                    if (cols.length < 4) continue;
+
+                    const dateVal = cols[0].trim();
+                    const rpmVal = parseFloat(cols[1]) || 0;
+                    const speedVal = parseFloat(cols[2]) || 0;
+                    const timeVal = parseFloat(cols[3]) || 0;
+                    const weightVal = cols[4] !== undefined && cols[4] !== "" ? parseFloat(cols[4]) : undefined;
+
+                    if (!dateVal) continue;
+
+                    let existingIndex = history.findIndex(item => item.time === dateVal);
+                    if (existingIndex !== -1) {
+                        history[existingIndex].rpm = rpmVal;
+                        history[existingIndex].speed = speedVal;
+                        history[existingIndex].duration = timeVal;
+                        if (weightVal !== undefined) history[existingIndex].weight = weightVal;
+                    } else {
+                        history.push({
+                            time: dateVal,
+                            rpm: rpmVal,
+                            speed: speedVal,
+                            duration: timeVal,
+                            weight: weightVal
+                        });
+                    }
+                    importedCount++;
+                }
+
+                history.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+                localStorage.setItem(getStorageKey(), JSON.stringify(history));
+                renderRecentData(50);
+                alert(`${importedCount} 件のデータをインポートしました！`);
+                e.target.value = "";
+            };
+            reader.readAsText(file, 'UTF-8');
+        });
+
+        // --- 7. 棒グラフ項目の動的切替 ---
         document.getElementById('barTargetSelect').addEventListener('change', (e) => {
             const selectedIndex = parseInt(e.target.value);
             wheelChart.data.datasets.forEach((ds, index) => {
@@ -253,7 +312,7 @@
             wheelChart.update();
         });
 
-        // --- 7. 日付指定表示 ＆ 前日・翌日ナビゲーション ---
+        // --- 8. 日付指定表示 ＆ 前日・翌日ナビゲーション ---
         const dateFilter = document.getElementById('dateFilter');
 
         function showDateData(targetDateStr) {
@@ -318,7 +377,7 @@
             document.getElementById('totalRpm').textContent = "--";
         });
 
-        // --- 8. CSV一括ダウンロード ---
+        // --- 9. CSV一括ダウンロード ---
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             const history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
@@ -341,7 +400,7 @@
             URL.revokeObjectURL(link.href);
         });
 
-        // --- 9. データ全消去 ---
+        // --- 10. データ全消去 ---
         document.getElementById('clearBtn').addEventListener('click', () => {
             if (confirm("本当に現在接続中のデバイスのすべてのデータを消去しますか？")) {
                 localStorage.removeItem(getStorageKey());
