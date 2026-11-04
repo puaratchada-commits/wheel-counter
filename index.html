@@ -193,7 +193,6 @@
             const recentData = history.slice(-limit);
             updateChartWithData(recentData);
 
-            // 最新データの最後の1件の日付を集計エリアに反映
             if (recentData.length > 0) {
                 const latest = recentData[recentData.length - 1];
                 document.getElementById('displayDate').textContent = latest.time + " (最新)";
@@ -490,6 +489,7 @@
                 document.getElementById('avgSpeed').textContent = "--";
                 document.getElementById('totalRpm').textContent = "--";
             } else {
+                // ★カレンダー等で選択したその日のデータを確実に反映
                 document.getElementById('displayDate').textContent = targetRecord.time;
                 document.getElementById('displayWeight').textContent = targetRecord.weight !== undefined ? targetRecord.weight : "--";
                 document.getElementById('totalDuration').textContent = targetRecord.duration || 0;
