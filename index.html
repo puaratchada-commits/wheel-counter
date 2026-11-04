@@ -92,6 +92,54 @@
     </div>
 
     <script>
+        // --- ★起動時の自動データ移行（旧キーから新キーへの引っ越し） ---
+        function migrateOldStorageData() {
+            const currentKey = getCurrentDeviceKey();
+            const targetStorageKey = `wheelData_${currentKey}`;
+            
+            // もし現在の新キーにデータがなければ、古い形式のキーを探して統合を試みる
+            if (!localStorage.getItem(targetStorageKey)) {
+                let mergedHistory = [];
+                let keysToRemove = [];
+
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    // "wheelData_" で始まっており、かつ現在のキー名そのものではないもの（MACアドレスや旧形式など）を対象にする
+                    if (k && k.startsWith('wheelData_') && k !== targetStorageKey) {
+                        try {
+                            const oldData = JSON.parse(localStorage.getItem(k));
+                            if (Array.isArray(oldData) && oldData.length > 0) {
+                                mergedHistory = mergedHistory.concat(oldData);
+                                keysToRemove.push(k);
+                            }
+                        } catch (e) {
+                            console.error("移行エラー:", e);
+                        }
+                    }
+                }
+
+                if (mergedHistory.length > 0) {
+                    // 日付順に並べ替えて重複排除
+                    mergedHistory.sort((a, b) => new Date(a.time) - new Date(b.time));
+                    
+                    // 同じ日付のデータがあれば新しい方にまとめる
+                    let uniqueHistory = [];
+                    let dateMap = {};
+                    mergedHistory.forEach(item => {
+                        dateMap[item.time] = item; // 後ろのデータ（新しい方）を優先、または上書き
+                    });
+                    uniqueHistory = Object.values(dateMap);
+                    uniqueHistory.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+                    localStorage.setItem(targetStorageKey, JSON.stringify(uniqueHistory));
+                    
+                    // 古いキーを削除
+                    keysToRemove.forEach(k => localStorage.removeItem(k));
+                    console.log(`${keysToRemove.length} 件の旧データを [${targetStorageKey}] に移行しました。`);
+                }
+            }
+        }
+
         // --- 複数個体・名前管理システム ---
         function getDeviceNamesMap() {
             return JSON.parse(localStorage.getItem('wheelDeviceNamesMap')) || {};
@@ -132,7 +180,7 @@
 
         function getCurrentDeviceKey() {
             const deviceSelect = document.getElementById('deviceSelect');
-            return deviceSelect.value || 'GIGI-01';
+            return deviceSelect ? (deviceSelect.value || 'GIGI-01') : 'GIGI-01';
         }
 
         function getStorageKey() {
@@ -140,6 +188,9 @@
         }
 
         updateDeviceSelectOptions(localStorage.getItem('activeSelectedDevice') || 'GIGI-01');
+        
+        // 起動時に自動移行を実行
+        migrateOldStorageData();
 
         // --- スタイル定義 ---
         const metricStyles = [
@@ -183,6 +234,7 @@
 
         // --- 2. グラフ描画ヘルパー（最新N件） ---
         function renderRecentData(limit = 50) {
+            migrateOldStorageData(); // 描画前にも念のため移行確認
             const currentKey = getCurrentDeviceKey();
             localStorage.setItem('activeSelectedDevice', currentKey);
             document.getElementById('displayDeviceName').textContent = currentKey;
@@ -201,7 +253,7 @@
                 document.getElementById('avgSpeed').textContent = (latest.speed || 0).toFixed(1);
                 document.getElementById('totalRpm').textContent = (latest.rpm || 0).toLocaleString();
             } else {
-                document.getElementById('displayDate').textContent = --;
+                document.getElementById('displayDate').textContent = "--";
                 document.getElementById('displayWeight').textContent = "--";
                 document.getElementById('totalDuration').textContent = "--";
                 document.getElementById('avgSpeed').textContent = "--";
@@ -279,11 +331,10 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
                 
-                // ★MACアドレスではなく、HM-10に設定されたデバイス名（device.name）を取得して識別
                 const deviceName = device.name ? device.name.trim() : "GIGI-01";
 
-                // プルダウンに存在しなければ追加して選択
                 updateDeviceSelectOptions(deviceName);
+                migrateOldStorageData(); // 接続時にも移行確認
 
                 connectBtn.textContent = `接続中: ${deviceName}`;
                 renderRecentData(50);
