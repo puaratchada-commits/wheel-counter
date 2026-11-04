@@ -28,7 +28,7 @@
         <select id="deviceSelect" style="font-weight: bold; color: #0d47a1;">
             <!-- 動的に生成されます -->
         </select><br>
-        <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold; margin-top: 6px;">Bluetooth 接続（現在の個体に紐付け）</button><br>
+        <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold; margin-top: 6px;">Bluetooth 接続（名前で自動識別）</button><br>
         <button id="renameBtn" style="font-size: 13px; padding: 4px 8px; margin-top: 4px;">選択中の名前にカスタム名を設定</button>
     </div><br>
 
@@ -201,7 +201,7 @@
                 document.getElementById('avgSpeed').textContent = (latest.speed || 0).toFixed(1);
                 document.getElementById('totalRpm').textContent = (latest.rpm || 0).toLocaleString();
             } else {
-                document.getElementById('displayDate').textContent = "--";
+                document.getElementById('displayDate').textContent = --;
                 document.getElementById('displayWeight').textContent = "--";
                 document.getElementById('totalDuration').textContent = "--";
                 document.getElementById('avgSpeed').textContent = "--";
@@ -261,15 +261,15 @@
             document.getElementById('dateFilter').value = "";
         });
 
-        // --- 3. Bluetooth 接続とデータ受信 ---
+        // --- 3. Bluetooth 接続とデータ受信（デバイス名による識別） ---
         const connectBtn = document.getElementById('connectBtn');
         let receiveBuffer = "";
-        let activeConnectedDevice = null;
 
         connectBtn.addEventListener('click', async () => {
             try {
                 const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ services: [0xFFE0] }]
+                    filters: [{ services: [0xFFE0] }],
+                    optionalServices: [0xFFE0]
                 });
 
                 const server = await device.gatt.connect();
@@ -279,22 +279,18 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
                 
-                activeConnectedDevice = device.id;
-                
-                const map = getDeviceNamesMap();
-                if (map[activeConnectedDevice]) {
-                    updateDeviceSelectOptions(map[activeConnectedDevice]);
-                } else {
-                    map[activeConnectedDevice] = getCurrentDeviceKey();
-                    localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
-                }
+                // ★MACアドレスではなく、HM-10に設定されたデバイス名（device.name）を取得して識別
+                const deviceName = device.name ? device.name.trim() : "GIGI-01";
 
-                connectBtn.textContent = "Bluetooth 接続済み";
+                // プルダウンに存在しなければ追加して選択
+                updateDeviceSelectOptions(deviceName);
+
+                connectBtn.textContent = `接続中: ${deviceName}`;
                 renderRecentData(50);
-                alert(`デバイスに接続しました！ データは [${getCurrentDeviceKey()}] に記録されます。`);
+                alert(`Bluetoothデバイス [${deviceName}] に接続しました！`);
             } catch (error) {
                 console.error(error);
-                alert("接続に失敗しました。");
+                alert("接続に失敗しましたまたはキャンセルされました。");
             }
         });
 
@@ -310,12 +306,6 @@
                     localStorage.setItem(`wheelData_${trimmedName}`, oldData);
                     localStorage.removeItem(`wheelData_${currentKey}`);
                 }
-
-                const map = getDeviceNamesMap();
-                if (activeConnectedDevice) {
-                    map[activeConnectedDevice] = trimmedName;
-                }
-                localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
 
                 updateDeviceSelectOptions(trimmedName);
                 renderRecentData(50);
@@ -489,7 +479,6 @@
                 document.getElementById('avgSpeed').textContent = "--";
                 document.getElementById('totalRpm').textContent = "--";
             } else {
-                // ★カレンダー等で選択したその日のデータを確実に反映
                 document.getElementById('displayDate').textContent = targetRecord.time;
                 document.getElementById('displayWeight').textContent = targetRecord.weight !== undefined ? targetRecord.weight : "--";
                 document.getElementById('totalDuration').textContent = targetRecord.duration || 0;
@@ -542,7 +531,7 @@
             const today = new Date().toISOString().split('T')[0];
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `${getCurrentDeviceName()}_wheel_data_${today}.csv`;
+            link.download = `${getCurrentDeviceKey()}_wheel_data_${today}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
