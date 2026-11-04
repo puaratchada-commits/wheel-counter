@@ -84,6 +84,7 @@
     <div id="statsContainer">
         <b>【選択個体・日の確定データ】</b><br>
         対象個体: <span id="displayDeviceName" style="color: #d32f2f; font-weight: bold;">--</span><br>
+        対象日付: <span id="displayDate" style="color: #1976d2; font-weight: bold;">--</span><br>
         体重: <span id="displayWeight">--</span> g<br>
         総運動時間: <span id="totalDuration">--</span> 分<br>
         平均速度: <span id="avgSpeed">--</span> cm/s<br>
@@ -191,6 +192,22 @@
 
             const recentData = history.slice(-limit);
             updateChartWithData(recentData);
+
+            // 最新データの最後の1件の日付を集計エリアに反映
+            if (recentData.length > 0) {
+                const latest = recentData[recentData.length - 1];
+                document.getElementById('displayDate').textContent = latest.time + " (最新)";
+                document.getElementById('displayWeight').textContent = latest.weight !== undefined ? latest.weight : "--";
+                document.getElementById('totalDuration').textContent = latest.duration || 0;
+                document.getElementById('avgSpeed').textContent = (latest.speed || 0).toFixed(1);
+                document.getElementById('totalRpm').textContent = (latest.rpm || 0).toLocaleString();
+            } else {
+                document.getElementById('displayDate').textContent = "--";
+                document.getElementById('displayWeight').textContent = "--";
+                document.getElementById('totalDuration').textContent = "--";
+                document.getElementById('avgSpeed').textContent = "--";
+                document.getElementById('totalRpm').textContent = "--";
+            }
         }
 
         // --- 指定日を起点にした周辺データを描画する関数 ---
@@ -243,10 +260,6 @@
         document.getElementById('deviceSelect').addEventListener('change', () => {
             renderRecentData(50);
             document.getElementById('dateFilter').value = "";
-            document.getElementById('displayWeight').textContent = "--";
-            document.getElementById('totalDuration').textContent = "--";
-            document.getElementById('avgSpeed').textContent = "--";
-            document.getElementById('totalRpm').textContent = "--";
         });
 
         // --- 3. Bluetooth 接続とデータ受信 ---
@@ -471,11 +484,13 @@
             dateFilter.value = targetDateStr;
 
             if (!targetRecord) {
+                document.getElementById('displayDate').textContent = targetDateStr + " (データなし)";
                 document.getElementById('displayWeight').textContent = "--";
                 document.getElementById('totalDuration').textContent = "--";
                 document.getElementById('avgSpeed').textContent = "--";
                 document.getElementById('totalRpm').textContent = "--";
             } else {
+                document.getElementById('displayDate').textContent = targetRecord.time;
                 document.getElementById('displayWeight').textContent = targetRecord.weight !== undefined ? targetRecord.weight : "--";
                 document.getElementById('totalDuration').textContent = targetRecord.duration || 0;
                 document.getElementById('avgSpeed').textContent = (targetRecord.speed || 0).toFixed(1);
@@ -507,10 +522,6 @@
         document.getElementById('resetBtn').addEventListener('click', () => {
             renderRecentData(50);
             dateFilter.value = "";
-            document.getElementById('displayWeight').textContent = "--";
-            document.getElementById('totalDuration').textContent = "--";
-            document.getElementById('avgSpeed').textContent = "--";
-            document.getElementById('totalRpm').textContent = "--";
         });
 
         // --- 9. CSV一括ダウンロード ---
@@ -545,10 +556,6 @@
                 localStorage.removeItem(getStorageKey());
                 renderRecentData(50);
                 dateFilter.value = "";
-                document.getElementById('displayWeight').textContent = "--";
-                document.getElementById('totalDuration').textContent = "--";
-                document.getElementById('avgSpeed').textContent = "--";
-                document.getElementById('totalRpm').textContent = "--";
                 alert(`個体 [${currentName}] のデータを消去しました。`);
             }
         });
