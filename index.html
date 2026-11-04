@@ -14,6 +14,8 @@
         .device-box { background: #e3f2fd; padding: 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
         .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
         .import-box { background: #fff3e0; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; }
+        .toggle-box { background: #fafafa; padding: 10px 15px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ddd; }
+        .toggle-box label { margin: 0 8px; cursor: pointer; font-size: 14px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -41,6 +43,15 @@
     <div class="import-box">
         <label for="importCsvFile" style="font-size: 14px; cursor: pointer;">CSVインポート: </label>
         <input type="file" id="importCsvFile" accept=".csv" style="font-size: 14px;">
+    </div>
+
+    <!-- グラフの表示・非表示切り替えチェックボックス -->
+    <div class="toggle-box">
+        <b>表示項目選択: </b>
+        <label style="color: rgb(75, 192, 192);"><input type="checkbox" class="metric-toggle" data-index="0" checked> 回転数</label>
+        <label style="color: rgb(255, 99, 132);"><input type="checkbox" class="metric-toggle" data-index="1" checked> 平均速度</label>
+        <label style="color: rgb(54, 162, 235);"><input type="checkbox" class="metric-toggle" data-index="2" checked> 運動時間</label>
+        <label style="color: rgb(156, 39, 176);"><input type="checkbox" class="metric-toggle" data-index="3" checked> 体重</label>
     </div>
 
     <!-- 棒グラフ対象の選択メニュー -->
@@ -144,10 +155,10 @@
             data: {
                 labels: [],
                 datasets: [
-                    { label: '回転数 (回)', type: 'line', data: [], borderColor: metricStyles[0].borderColor, backgroundColor: 'transparent', yAxisID: 'y', tension: 0.1, order: 1 },
-                    { label: '平均速度 (cm/s)', type: 'line', data: [], borderColor: metricStyles[1].borderColor, backgroundColor: 'transparent', yAxisID: 'y2', tension: 0.1, order: 1 },
-                    { label: '運動時間 (分)', type: 'bar', data: [], borderColor: metricStyles[2].borderColor, backgroundColor: metricStyles[2].bgColor, borderWidth: 1, yAxisID: 'y2', order: 2 },
-                    { label: '体重 (g)', type: 'line', data: [], borderColor: metricStyles[3].borderColor, backgroundColor: 'transparent', yAxisID: 'y3', tension: 0.1, order: 1 }
+                    { label: '回転数 (回)', type: 'line', data: [], borderColor: metricStyles[0].borderColor, backgroundColor: 'transparent', yAxisID: 'y', tension: 0.1, order: 1, hidden: false },
+                    { label: '平均速度 (cm/s)', type: 'line', data: [], borderColor: metricStyles[1].borderColor, backgroundColor: 'transparent', yAxisID: 'y2', tension: 0.1, order: 1, hidden: false },
+                    { label: '運動時間 (分)', type: 'bar', data: [], borderColor: metricStyles[2].borderColor, backgroundColor: metricStyles[2].bgColor, borderWidth: 1, yAxisID: 'y2', order: 2, hidden: false },
+                    { label: '体重 (g)', type: 'line', data: [], borderColor: metricStyles[3].borderColor, backgroundColor: 'transparent', yAxisID: 'y3', tension: 0.1, order: 1, hidden: false }
                 ]
             },
             options: {
@@ -157,6 +168,16 @@
                     y3: { type: 'linear', display: false, position: 'right' }
                 }
             }
+        });
+
+        // --- グラフ項目の表示・非表示を切り替えるイベント ---
+        document.querySelectorAll('.metric-toggle').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const index = parseInt(e.target.getAttribute('data-index'));
+                const dataset = wheelChart.data.datasets[index];
+                dataset.hidden = !e.target.checked;
+                wheelChart.update();
+            });
         });
 
         // --- 2. グラフ描画ヘルパー（最新N件） ---
@@ -181,22 +202,18 @@
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
-            // 指定日のインデックスを探す
             let targetIndex = history.findIndex(item => item.time === targetDateStr);
             
             let displayData = [];
             if (targetIndex !== -1) {
-                // 指定日が存在する場合、その前後を含めて最大 limit 件を切り出す
                 let half = Math.floor(limit / 2);
                 let start = Math.max(0, targetIndex - half);
                 let end = Math.min(history.length, start + limit);
-                // 端数調整
                 if (end - start < limit && start > 0) {
                     start = Math.max(0, end - limit);
                 }
                 displayData = history.slice(start, end);
             } else {
-                // 指定日のデータがない場合は単に直近データを表示
                 displayData = history.slice(-limit);
             }
 
@@ -465,7 +482,6 @@
                 document.getElementById('totalRpm').textContent = (targetRecord.rpm || 0).toLocaleString();
             }
 
-            // 指定日を基準に周辺50件をグラフに表示
             renderDataAroundDate(targetDateStr, 50);
         }
 
@@ -515,7 +531,7 @@
             const today = new Date().toISOString().split('T')[0];
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `${getCurrentDeviceKey()}_wheel_data_${today}.csv`;
+            link.download = `${getCurrentDeviceName()}_wheel_data_${today}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
