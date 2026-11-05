@@ -103,16 +103,28 @@
     </div>
 
     <script>
-        // --- 日付文字列の正規化・加減算用ユーティリティ ---
-        function parseDateString(dateStr) {
-            if (!dateStr) return null;
-            const cleaned = dateStr.replace(/\s*\(.*?\)/, '').trim();
+        // 日付文字列を YYYY-MM-DD 形式に統一する関数
+        function normalizeDateStr(str) {
+            if (!str) return "";
+            const cleaned = str.replace(/\s*\(.*?\)/, '').trim();
             const parts = cleaned.split(/[-/]/);
             if (parts.length === 3) {
                 const y = parseInt(parts[0], 10);
-                const m = parseInt(parts[1], 10) - 1;
+                const m = parseInt(parts[1], 10);
                 const d = parseInt(parts[2], 10);
-                return new Date(y, m, d);
+                if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+                    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                }
+            }
+            return cleaned;
+        }
+
+        function parseDateString(dateStr) {
+            const norm = normalizeDateStr(dateStr);
+            if (!norm) return null;
+            const parts = norm.split('-');
+            if (parts.length === 3) {
+                return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
             }
             const d = new Date(dateStr);
             return isNaN(d.getTime()) ? null : d;
@@ -153,7 +165,9 @@
                     mergedHistory.sort((a, b) => new Date(a.time) - new Date(b.time));
                     let dateMap = {};
                     mergedHistory.forEach(item => {
-                        dateMap[item.time] = item;
+                        const nTime = normalizeDateStr(item.time);
+                        item.time = nTime;
+                        dateMap[nTime] = item;
                     });
                     let uniqueHistory = Object.values(dateMap);
                     uniqueHistory.sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -306,7 +320,7 @@
             if (recentData.length > 0) {
                 const latest = recentData[recentData.length - 1];
                 updateStatsAndHourly(latest);
-                document.getElementById('dateFilter').value = latest.time;
+                document.getElementById('dateFilter').value = normalizeDateStr(latest.time);
             } else {
                 clearStatsAndHourly("--");
                 document.getElementById('dateFilter').value = "";
@@ -318,10 +332,12 @@
             localStorage.setItem('activeSelectedDevice', currentKey);
             document.getElementById('displayDeviceName').textContent = currentKey;
 
+            const normalizedTarget = normalizeDateStr(targetDateStr);
+
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
-            let targetIndex = history.findIndex(item => item.time === targetDateStr);
+            let targetIndex = history.findIndex(item => normalizeDateStr(item.time) === normalizedTarget);
             let displayData = [];
             if (targetIndex !== -1) {
                 let half = Math.floor(limit / 2);
@@ -337,11 +353,11 @@
 
             updateChartWithData(displayData);
 
-            const targetRecord = history.find(item => item.time === targetDateStr);
+            const targetRecord = history.find(item => normalizeDateStr(item.time) === normalizedTarget);
             if (targetRecord) {
                 updateStatsAndHourly(targetRecord);
             } else {
-                clearStatsAndHourly(targetDateStr + " (データなし)");
+                clearStatsAndHourly(normalizedTarget + " (データなし)");
             }
         }
 
@@ -350,7 +366,7 @@
             wheelChart.data.datasets.forEach(ds => ds.data = []);
 
             dataList.forEach(item => {
-                wheelChart.data.labels.push(item.time);
+                wheelChart.data.labels.push(normalizeDateStr(item.time));
                 wheelChart.data.datasets[0].data.push(item.rpm || 0);
                 wheelChart.data.datasets[1].data.push(item.speed || 0);
                 wheelChart.data.datasets[2].data.push(item.duration || 0);
@@ -360,13 +376,14 @@
         }
 
         function updateStatsAndHourly(record) {
-            document.getElementById('displayDate').textContent = record.time;
+            const displayDateStr = normalizeDateStr(record.time);
+            document.getElementById('displayDate').textContent = displayDateStr;
             document.getElementById('displayWeight').textContent = record.weight !== undefined ? record.weight : "--";
             document.getElementById('totalDuration').textContent = record.duration || 0;
             document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
             document.getElementById('totalRpm').textContent = (record.rpm || 0).toLocaleString();
 
-            document.getElementById('hourlyTitle').textContent = `【24時間分布 (${record.time} 12:00 〜 翌11:00)】`;
+            document.getElementById('hourlyTitle').textContent = `【24時間分布 (${displayDateStr} 12:00 〜 翌11:00)】`;
 
             let hourlyData = record.hourly || new Array(24).fill(0);
             hourlyChart.data.datasets[0].data = hourlyData;
@@ -455,7 +472,7 @@
             const values = csvLine.split(',');
             if (values.length < 5) return; 
 
-            const dateValue = values[0].trim();
+            const dateValue = normalizeDateStr(values[0]);
             const rpmValue = parseFloat(values[1]);
             const speedValue = parseFloat(values[2]);
             const timeValue = parseFloat(values[3]);
@@ -470,7 +487,7 @@
             if (!dateValue || isNaN(rpmValue)) return; 
 
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
-            const existingIndex = history.findIndex(item => item.time === dateValue);
+            const existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateValue);
             
             if (existingIndex !== -1) {
                 history[existingIndex].rpm = rpmValue;
@@ -503,13 +520,13 @@
                 return;
             }
 
-            let targetDateStr = document.getElementById('dateFilter').value;
+            let targetDateStr = normalizeDateStr(document.getElementById('dateFilter').value);
             if (!targetDateStr) {
                 targetDateStr = formatDateString(new Date());
             }
 
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
-            let existingIndex = history.findIndex(item => item.time === targetDateStr);
+            let existingIndex = history.findIndex(item => normalizeDateStr(item.time) === targetDateStr);
 
             if (existingIndex !== -1) {
                 history[existingIndex].weight = weightVal;
@@ -523,7 +540,7 @@
             showDateDataAndAround(targetDateStr);
         });
 
-        // --- CSVインポート処理 (24時間配列対応) ---
+        // --- CSVインポート処理 (スラッシュ日付もハイフンに正規化) ---
         document.getElementById('importCsvFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -542,7 +559,7 @@
                     const cols = line.split(',');
                     if (cols.length < 4) continue;
 
-                    const dateVal = cols[0].trim();
+                    const dateVal = normalizeDateStr(cols[0]);
                     const rpmVal = parseFloat(cols[1]) || 0;
                     const speedVal = parseFloat(cols[2]) || 0;
                     const timeVal = parseFloat(cols[3]) || 0;
@@ -556,8 +573,9 @@
 
                     if (!dateVal) continue;
 
-                    let existingIndex = history.findIndex(item => item.time === dateVal);
+                    let existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateVal);
                     if (existingIndex !== -1) {
+                        history[existingIndex].time = dateVal;
                         history[existingIndex].rpm = rpmVal;
                         history[existingIndex].speed = speedVal;
                         history[existingIndex].duration = timeVal;
@@ -612,8 +630,9 @@
         const dateFilter = document.getElementById('dateFilter');
 
         function showDateDataAndAround(targetDateStr) {
-            dateFilter.value = targetDateStr;
-            renderDataAroundDate(targetDateStr, 50);
+            const normDate = normalizeDateStr(targetDateStr);
+            dateFilter.value = normDate;
+            renderDataAroundDate(normDate, 50);
         }
 
         document.getElementById('filterBtn').addEventListener('click', () => {
@@ -621,19 +640,18 @@
             showDateDataAndAround(dateFilter.value);
         });
 
-        // 前日・翌日ボタン処理（日付のズレと「データなし」固定を修正）
+        // 前日・翌日ボタン処理（日付形式の正規化と前後移動）
         function shiftDate(days) {
             let baseDateStr = dateFilter.value;
             if (!baseDateStr) {
                 const displayDateEl = document.getElementById('displayDate');
                 if (displayDateEl && displayDateEl.textContent && displayDateEl.textContent !== '--') {
-                    baseDateStr = displayDateEl.textContent.replace(/\s*\(.*?\)/, '').trim();
+                    baseDateStr = displayDateEl.textContent;
                 }
             }
 
             let baseDate = parseDateString(baseDateStr);
 
-            // 日付が見つからない場合は保存されている履歴の最新日を使用
             if (!baseDate) {
                 let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
                 if (history.length > 0) {
@@ -672,7 +690,7 @@
                 for (let h = 0; h < 24; h++) {
                     hourlyStr += `,${arr[h] || 0}`;
                 }
-                csvContent += `${item.time},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr}\r\n`;
+                csvContent += `${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr}\r\n`;
             });
 
             const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
