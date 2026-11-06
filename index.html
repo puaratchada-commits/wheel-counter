@@ -17,6 +17,38 @@
         .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
         .import-box { background: #fff3e0; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; }
         .date-controls { margin: 18px auto; max-width: 650px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px; }
+        
+        /* 凡例横の運動時間帯表示 */
+        .hourly-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        .legend-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #666;
+        }
+        .legend-color-box {
+            width: 32px;
+            height: 12px;
+            background-color: rgba(54, 162, 235, 0.5);
+            border: 1px solid rgb(54, 162, 235);
+        }
+        .time-range-badge {
+            font-size: 13px;
+            color: #2e7d32;
+            font-weight: bold;
+            background: #e8f5e9;
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid #c8e6c9;
+        }
+
         h3 { margin: 10px 0 5px 0; color: #1976d2; }
     </style>
 </head>
@@ -66,7 +98,7 @@
         <canvas id="wheelChart"></canvas>
     </div>
 
-    <!-- 日付操作コントロール（グラフ間に移動） -->
+    <!-- 日付操作コントロール（グラフ間に配置） -->
     <div class="date-controls">
         <button id="prevDayBtn">◀ 前日</button>
         <input type="date" id="dateFilter">
@@ -78,6 +110,14 @@
     <!-- 12時〜翌11時 時間帯別分布グラフ -->
     <div class="chart-box">
         <h3 id="hourlyTitle">【24時間分布 (12:00 〜 翌11:00)】</h3>
+        <!-- 凡例および運動時間帯の横並び表示エリア -->
+        <div class="hourly-header-row">
+            <span class="legend-indicator">
+                <span class="legend-color-box"></span>
+                <span>時間帯別回転数 (回)</span>
+            </span>
+            <span class="time-range-badge">運動時間帯: <span id="displayTimeRange">--:-- ～ --:--</span></span>
+        </div>
         <canvas id="hourlyChart"></canvas>
     </div>
 
@@ -87,7 +127,6 @@
         対象個体: <span id="displayDeviceName" style="color: #d32f2f; font-weight: bold;">--</span><br>
         対象日付: <span id="displayDate" style="color: #1976d2; font-weight: bold;">--</span><br>
         体重: <span id="displayWeight">--</span> g<br>
-        運動時間帯: <span id="displayTimeRange" style="font-weight: bold; color: #2e7d32;">--:-- ～ --:--</span><br>
         総運動時間: <span id="totalDuration">--</span> 分<br>
         平均速度: <span id="avgSpeed">--</span> cm/s<br>
         総回転数: <span id="totalRpm">-- 回</span>
@@ -277,6 +316,10 @@
             },
             options: {
                 responsive: true,
+                plugins: {
+                    // HTML側に自前のカスタム凡例＋運動時間帯を置くため標準凡例は非表示
+                    legend: { display: false }
+                },
                 scales: {
                     y: { beginAtZero: true }
                 }
@@ -357,7 +400,10 @@
             const displayDateStr = normalizeDateStr(record.time);
             document.getElementById('displayDate').textContent = displayDateStr;
             document.getElementById('displayWeight').textContent = record.weight !== undefined ? record.weight : "--";
+            
+            // 運動時間帯の更新
             document.getElementById('displayTimeRange').textContent = record.timeRange || "--:-- ～ --:--";
+            
             document.getElementById('totalDuration').textContent = record.duration || 0;
             document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
 
