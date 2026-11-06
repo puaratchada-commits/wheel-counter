@@ -109,7 +109,6 @@
     <!-- 12時〜翌11時 時間帯別分布グラフ -->
     <div class="chart-box">
         <h3 id="hourlyTitle">【24時間分布】</h3>
-        <!-- 凡例および運動時間帯の横並び表示エリア -->
         <div class="hourly-header-row">
             <span class="legend-indicator">
                 <span class="legend-color-box"></span>
@@ -405,6 +404,7 @@
             document.getElementById('totalDuration').textContent = record.duration || 0;
             document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
 
+            // 総回転数と距離（m）の表示計算
             const rpm = record.rpm || 0;
             let rpmText = `${rpm.toLocaleString()} 回`;
             if (record.diameter && record.diameter > 0) {
@@ -413,15 +413,13 @@
             }
             document.getElementById('totalRpm').textContent = rpmText;
 
-            // 前日12:00 〜 当日11:00 のタイトル生成（例: 2026-12-19 12:00 〜 12-20 11:00）
+            // 前日12:00 〜 当日11:00 のタイトル生成
             const currDateObj = parseDateString(displayDateStr);
-            let prevDateStr = "";
-            let shortCurrDateStr = displayDateStr;
             if (currDateObj) {
                 const prevDateObj = new Date(currDateObj);
                 prevDateObj.setDate(prevDateObj.getDate() - 1);
-                prevDateStr = formatDateString(prevDateObj);
-                shortCurrDateStr = displayDateStr.length >= 10 ? displayDateStr.slice(5) : displayDateStr;
+                const prevDateStr = formatDateString(prevDateObj);
+                const shortCurrDateStr = displayDateStr.length >= 10 ? displayDateStr.slice(5) : displayDateStr;
                 document.getElementById('hourlyTitle').textContent = `【24時間分布 (${prevDateStr} 12:00 〜 ${shortCurrDateStr} 11:00)】`;
             } else {
                 document.getElementById('hourlyTitle').textContent = `【24時間分布】`;
@@ -461,9 +459,9 @@
             renderRecentData(50);
         });
 
-        // --- Bluetooth 受信バッファ ---
+        // --- Bluetooth 受信 ---
         const connectBtn = document.getElementById('connectBtn');
-        let byteBuffer = new Uint8Array(0);
+        let receiveBuffer = "";
 
         connectBtn.addEventListener('click', async () => {
             try {
@@ -509,69 +507,21 @@
             }
         });
 
-        // --- バイナリ＋テキスト対応の受信ハンドラ ---
+        // Bluetoothテキスト受信ハンドラ
         function handleData(event) {
-            const incoming = new Uint8Array(event.target.value.buffer);
-            
-            const merged = new Uint8Array(byteBuffer.length + incoming.length);
-            merged.set(byteBuffer, 0);
-            merged.set(incoming, byteBuffer.length);
-            byteBuffer = merged;
+            const text = new TextDecoder('utf-8').decode(event.target.value);
+            receiveBuffer += text;
+            let lines = receiveBuffer.split('\n');
+            receiveBuffer = lines.pop(); 
 
-            let newlineIndex;
-            while ((newlineIndex = byteBuffer.indexOf(0x0A)) !== -1) {
-                let packetEnd = newlineIndex;
-                if (packetEnd > 0 && byteBuffer[packetEnd - 1] === 0x0D) {
-                    packetEnd--;
-                }
-
-                const packet = byteBuffer.subarray(0, packetEnd);
-                byteBuffer = byteBuffer.subarray(newlineIndex + 1);
-
-                parsePacket(packet);
+            for (let line of lines) {
+                line = line.trim();
+                if (line.length > 0) processCSV(line);
             }
         }
 
-        // パケットの解析（CSV文字列 + 末尾バイナリ時刻/直径）
-        function parsePacket(packet) {
-            let timeRangeStr = "";
-            let diameterVal = undefined;
-            let textBytes = packet;
-
-            if (packet.length >= 5) {
-                const sH = packet[packet.length - 5];
-                const sM = packet[packet.length - 4];
-                const eH = packet[packet.length - 3];
-                const eM = packet[packet.length - 2];
-                const d  = packet[packet.length - 1];
-
-                if (sH < 24 && sM < 60 && eH < 24 && eM < 60) {
-                    timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
-                    diameterVal = d > 0 ? d : undefined;
-                    textBytes = packet.subarray(0, packet.length - 5);
-                }
-            }
-
-            if (!timeRangeStr && packet.length >= 4) {
-                const sH = packet[packet.length - 4];
-                const sM = packet[packet.length - 3];
-                const eH = packet[packet.length - 2];
-                const eM = packet[packet.length - 1];
-
-                if (sH < 24 && sM < 60 && eH < 24 && eM < 60) {
-                    timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
-                    textBytes = packet.subarray(0, packet.length - 4);
-                }
-            }
-
-            const csvLine = new TextDecoder('utf-8').decode(textBytes).trim();
-            if (csvLine.length > 0) {
-                processCSV(csvLine, timeRangeStr, diameterVal);
-            }
-        }
-
-        // --- データ登録処理 ---
-        function processCSV(csvLine, timeRangeStr = "", diameterVal = undefined) {
+        // --- データ登録処理（CSVテキスト末尾の時刻・直径を直接解析） ---
+        function processCSV(csvLine) {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
 
@@ -581,11 +531,29 @@
             const timeValue = parseFloat(values[3]);
             const weightVal = values[4] !== "" ? parseFloat(values[4]) : undefined;
             
+            // 24時間分布（インデックス 5 〜 28）
             let hourlyArr = [];
             for (let i = 5; i < Math.min(values.length, 29); i++) {
                 hourlyArr.push(parseFloat(values[i]) || 0);
             }
             while (hourlyArr.length < 24) hourlyArr.push(0);
+
+            // ★末尾のテキスト時刻（開始時[29], 開始分[30], 終了時[31], 終了分[32]）を取り出す
+            let timeRangeStr = "";
+            if (values.length >= 33 && values[29] !== "" && values[30] !== "" && values[31] !== "" && values[32] !== "") {
+                const sH = pad2(parseInt(values[29], 10));
+                const sM = pad2(parseInt(values[30], 10));
+                const eH = pad2(parseInt(values[31], 10));
+                const eM = pad2(parseInt(values[32], 10));
+                timeRangeStr = `${sH}:${sM} ～ ${eH}:${eM}`;
+            }
+
+            // ★末尾のテキスト直径（[33]）を取り出す
+            let diameterVal = undefined;
+            if (values.length >= 34 && values[33] !== undefined && values[33].trim() !== "") {
+                const d = parseFloat(values[33]);
+                if (!isNaN(d) && d > 0) diameterVal = d;
+            }
 
             if (!dateValue || isNaN(rpmValue)) return; 
 
@@ -607,9 +575,9 @@
                     speed: speedValue, 
                     duration: timeValue, 
                     weight: weightVal, 
-                    hourly: hourlyArr,
-                    timeRange: timeRangeStr,
-                    diameter: diameterVal
+                    hourly: hourlyArr, 
+                    timeRange: timeRangeStr, 
+                    diameter: diameterVal 
                 });
                 if (history.length > 10000) history.shift();
             }
@@ -656,74 +624,15 @@
             reader.onload = function(event) {
                 const text = event.target.result;
                 const lines = text.split(/\r\n|\n/);
-                let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
                 let importedCount = 0;
 
                 for (let i = 1; i < lines.length; i++) {
                     const line = lines[i].trim();
                     if (!line) continue;
-
-                    const cols = line.split(',');
-                    if (cols.length < 4) continue;
-
-                    const dateVal = normalizeDateStr(cols[0]);
-                    const rpmVal = parseFloat(cols[1]) || 0;
-                    const speedVal = parseFloat(cols[2]) || 0;
-                    const timeVal = parseFloat(cols[3]) || 0;
-                    const weightVal = cols[4] !== undefined && cols[4] !== "" ? parseFloat(cols[4]) : undefined;
-
-                    let hourlyArr = [];
-                    for (let h = 5; h < Math.min(cols.length, 29); h++) {
-                        hourlyArr.push(parseFloat(cols[h]) || 0);
-                    }
-                    while (hourlyArr.length < 24) hourlyArr.push(0);
-
-                    let timeRangeVal = "";
-                    if (cols.length >= 33 && cols[29] !== "" && cols[30] !== "" && cols[31] !== "" && cols[32] !== "") {
-                        const sH = pad2(parseInt(cols[29], 10));
-                        const sM = pad2(parseInt(cols[30], 10));
-                        const eH = pad2(parseInt(cols[31], 10));
-                        const eM = pad2(parseInt(cols[32], 10));
-                        timeRangeVal = `${sH}:${sM} ～ ${eH}:${eM}`;
-                    } else if (cols[29] && cols[29].includes("～")) {
-                        timeRangeVal = cols[29].trim();
-                    }
-
-                    let diameterVal = undefined;
-                    if (cols.length >= 34 && cols[33] !== undefined && cols[33].trim() !== "") {
-                        const d = parseFloat(cols[33]);
-                        if (!isNaN(d) && d > 0) diameterVal = d;
-                    }
-
-                    if (!dateVal) continue;
-
-                    let existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateVal);
-                    if (existingIndex !== -1) {
-                        history[existingIndex].time = dateVal;
-                        history[existingIndex].rpm = rpmVal;
-                        history[existingIndex].speed = speedVal;
-                        history[existingIndex].duration = timeVal;
-                        if (weightVal !== undefined) history[existingIndex].weight = weightVal;
-                        if (hourlyArr.some(v => v > 0)) history[existingIndex].hourly = hourlyArr;
-                        if (timeRangeVal) history[existingIndex].timeRange = timeRangeVal;
-                        if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
-                    } else {
-                        history.push({
-                            time: dateVal,
-                            rpm: rpmVal,
-                            speed: speedVal,
-                            duration: timeVal,
-                            weight: weightVal,
-                            hourly: hourlyArr,
-                            timeRange: timeRangeVal,
-                            diameter: diameterVal
-                        });
-                    }
+                    processCSV(line);
                     importedCount++;
                 }
 
-                history.sort((a, b) => new Date(a.time) - new Date(b.time));
-                localStorage.setItem(getStorageKey(), JSON.stringify(history));
                 updateDeviceSelectOptions(getCurrentDeviceKey());
                 renderRecentData(50);
                 alert(`[${getCurrentDeviceKey()}] に ${importedCount} 件のデータをインポートしました！`);
