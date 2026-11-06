@@ -100,7 +100,7 @@
         運動時間帯: <span id="displayTimeRange" style="font-weight: bold; color: #2e7d32;">--:-- ～ --:--</span><br>
         総運動時間: <span id="totalDuration">--</span> 分<br>
         平均速度: <span id="avgSpeed">--</span> cm/s<br>
-        総回転数: <span id="totalRpm">--</span> 回
+        総回転数: <span id="totalRpm">-- 回</span>
     </div>
 
     <script>
@@ -379,11 +379,10 @@
             document.getElementById('totalDuration').textContent = record.duration || 0;
             document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
 
-            // 総回転数と距離（m）の表示計算
+            // 総回転数と距離（m）の表示計算: 4,520 回（3,549 m）
             const rpm = record.rpm || 0;
-            let rpmText = rpm.toLocaleString();
+            let rpmText = `${rpm.toLocaleString()} 回`;
             if (record.diameter && record.diameter > 0) {
-                // 走行距離 (m) = 回転数 × (π × 直径cm / 100) ※小数点以下切り捨て
                 const distMeter = Math.floor(rpm * Math.PI * (record.diameter / 100));
                 rpmText += `（${distMeter.toLocaleString()} m）`;
             }
@@ -402,7 +401,7 @@
             document.getElementById('displayTimeRange').textContent = "--:-- ～ --:--";
             document.getElementById('totalDuration').textContent = "--";
             document.getElementById('avgSpeed').textContent = "--";
-            document.getElementById('totalRpm').textContent = "--";
+            document.getElementById('totalRpm').textContent = "-- 回";
             document.getElementById('hourlyTitle').textContent = `【24時間分布 (12:00 〜 翌11:00)】`;
             hourlyChart.data.datasets[0].data = new Array(24).fill(0);
             hourlyChart.update();
