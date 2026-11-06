@@ -103,4 +103,691 @@
                 const y = parseInt(parts[0], 10);
                 const m = parseInt(parts[1], 10);
                 const d = parseInt(parts[2], 10);
-                if (!isNaN(y) && !isNaN(
+                if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+                    return `${y}-${pad2(m)}-${pad2(d)}`;
+                }
+            }
+            return cleaned;
+        }
+
+        function parseDateString(dateStr) {
+            const norm = normalizeDateStr(dateStr);
+            if (!norm) return null;
+            const parts = norm.split('-');
+            if (parts.length === 3) {
+                return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            }
+            const d = new Date(dateStr);
+            return isNaN(d.getTime()) ? null : d;
+        }
+
+        function formatDateString(dateObj) {
+            const yyyy = dateObj.getFullYear();
+            const mm = pad2(dateObj.getMonth() + 1);
+            const dd = pad2(dateObj.getDate());
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        function migrateOldStorageData() {
+            const currentKey = getCurrentDeviceKey();
+            const targetStorageKey = `wheelData_${currentKey}`;
+            
+            if (!localStorage.getItem(targetStorageKey)) {
+                let mergedHistory = [];
+                let keysToRemove = [];
+
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k && k.startsWith('wheelData_') && k !== targetStorageKey) {
+                        try {
+                            const oldData = JSON.parse(localStorage.getItem(k));
+                            if (Array.isArray(oldData) && oldData.length > 0) {
+                                mergedHistory = mergedHistory.concat(oldData);
+                                keysToRemove.push(k);
+                            }
+                        } catch (e) {
+                            console.error("移行エラー:", e);
+                        }
+                    }
+                }
+
+                if (mergedHistory.length > 0) {
+                    mergedHistory.sort((a, b) => new Date(a.time) - new Date(b.time));
+                    let dateMap = {};
+                    mergedHistory.forEach(item => {
+                        const nTime = normalizeDateStr(item.time);
+                        item.time = nTime;
+                        dateMap[nTime] = item;
+                    });
+                    let uniqueHistory = Object.values(dateMap);
+                    uniqueHistory.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+                    localStorage.setItem(targetStorageKey, JSON.stringify(uniqueHistory));
+                    keysToRemove.forEach(k => localStorage.removeItem(k));
+                }
+            }
+        }
+
+        function getDeviceNamesMap() {
+            return JSON.parse(localStorage.getItem('wheelDeviceNamesMap')) || {};
+        }
+
+        function updateDeviceSelectOptions(selectedKey = null) {
+            const map = getDeviceNamesMap();
+            const deviceSelect = document.getElementById('deviceSelect');
+            deviceSelect.innerHTML = '';
+
+            let keys = Object.keys(map);
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k.startsWith('wheelData_')) {
+                    const devName = k.replace('wheelData_', '');
+                    if (!keys.includes(devName) && !Object.values(map).includes(devName)) {
+                        keys.push(devName);
+                    }
+                }
+            }
+
+            if (keys.length === 0) {
+                keys = ['GIGI-01'];
+            }
+
+            keys.forEach(key => {
+                const displayName = map[key] || key;
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = displayName;
+                deviceSelect.appendChild(opt);
+            });
+
+            if (selectedKey && [...deviceSelect.options].some(o => o.value === selectedKey)) {
+                deviceSelect.value = selectedKey;
+            }
+        }
+
+        function getCurrentDeviceKey() {
+            const deviceSelect = document.getElementById('deviceSelect');
+            return deviceSelect ? (deviceSelect.value || 'GIGI-01') : 'GIGI-01';
+        }
+
+        function getStorageKey() {
+            return `wheelData_${getCurrentDeviceKey()}`;
+        }
+
+        updateDeviceSelectOptions(localStorage.getItem('activeSelectedDevice') || 'GIGI-01');
+        migrateOldStorageData();
+
+        const metricStyles = [
+            { borderColor: 'rgb(75, 192, 192)', bgColor: 'rgba(75, 192, 192, 0.3)' }, 
+            { borderColor: 'rgb(255, 99, 132)',  bgColor: 'rgba(255, 99, 132, 0.3)' },  
+            { borderColor: 'rgb(54, 162, 235)',  bgColor: 'rgba(54, 162, 235, 0.3)' },  
+            { borderColor: 'rgb(156, 39, 176)',  bgColor: 'rgba(156, 39, 176, 0.3)' }   
+        ];
+
+        const ctx = document.getElementById('wheelChart').getContext('2d');
+        const wheelChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: '回転数 (回)', type: 'line', data: [], borderColor: metricStyles[0].borderColor, backgroundColor: 'transparent', yAxisID: 'y', tension: 0.1, order: 1, hidden: false },
+                    { label: '平均速度 (cm/s)', type: 'line', data: [], borderColor: metricStyles[1].borderColor, backgroundColor: 'transparent', yAxisID: 'y2', tension: 0.1, order: 1, hidden: false },
+                    { label: '運動時間 (分)', type: 'bar', data: [], borderColor: metricStyles[2].borderColor, backgroundColor: metricStyles[2].bgColor, borderWidth: 1, yAxisID: 'y2', order: 2, hidden: false },
+                    { label: '体重 (g)', type: 'line', data: [], borderColor: metricStyles[3].borderColor, backgroundColor: 'transparent', yAxisID: 'y3', tension: 0.1, order: 1, hidden: false }
+                ]
+            },
+            options: {
+                responsive: true,
+                onClick: (event, elements) => {
+                    if (elements && elements.length > 0) {
+                        const index = elements[0].index;
+                        const clickedDate = wheelChart.data.labels[index];
+                        if (clickedDate) {
+                            showDateDataAndAround(clickedDate);
+                        }
+                    }
+                },
+                scales: {
+                    y: { type: 'linear', display: true, position: 'left' },
+                    y2: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false } },
+                    y3: { type: 'linear', display: false, position: 'right' }
+                }
+            }
+        });
+
+        const hourlyLabels = [
+            "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", 
+            "20:00", "21:00", "22:00", "23:00", "0:00", "1:00", "2:00", "3:00", 
+            "4:00", "5:00", "6:00", "7:00", "8:00", "9:00", "10:00", "11:00"
+        ];
+
+        const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
+        const hourlyChart = new Chart(ctxHourly, {
+            type: 'bar',
+            data: {
+                labels: hourlyLabels,
+                datasets: [{
+                    label: '時間帯別回転数 (回)',
+                    data: new Array(24).fill(0),
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgb(54, 162, 235)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        function renderRecentData(limit = 50) {
+            migrateOldStorageData();
+            const currentKey = getCurrentDeviceKey();
+            localStorage.setItem('activeSelectedDevice', currentKey);
+            document.getElementById('displayDeviceName').textContent = currentKey;
+
+            let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+            history.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+            const recentData = history.slice(-limit);
+            updateChartWithData(recentData);
+
+            if (recentData.length > 0) {
+                const latest = recentData[recentData.length - 1];
+                updateStatsAndHourly(latest);
+                document.getElementById('dateFilter').value = normalizeDateStr(latest.time);
+            } else {
+                clearStatsAndHourly("--");
+                document.getElementById('dateFilter').value = "";
+            }
+        }
+
+        function renderDataAroundDate(targetDateStr, limit = 50) {
+            const currentKey = getCurrentDeviceKey();
+            localStorage.setItem('activeSelectedDevice', currentKey);
+            document.getElementById('displayDeviceName').textContent = currentKey;
+
+            const normalizedTarget = normalizeDateStr(targetDateStr);
+
+            let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+            history.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+            let targetIndex = history.findIndex(item => normalizeDateStr(item.time) === normalizedTarget);
+            let displayData = [];
+            if (targetIndex !== -1) {
+                let half = Math.floor(limit / 2);
+                let start = Math.max(0, targetIndex - half);
+                let end = Math.min(history.length, start + limit);
+                if (end - start < limit && start > 0) {
+                    start = Math.max(0, end - limit);
+                }
+                displayData = history.slice(start, end);
+            } else {
+                displayData = history.slice(-limit);
+            }
+
+            updateChartWithData(displayData);
+
+            const targetRecord = history.find(item => normalizeDateStr(item.time) === normalizedTarget);
+            if (targetRecord) {
+                updateStatsAndHourly(targetRecord);
+            } else {
+                clearStatsAndHourly(normalizedTarget + " (データなし)");
+            }
+        }
+
+        function updateChartWithData(dataList) {
+            wheelChart.data.labels = [];
+            wheelChart.data.datasets.forEach(ds => ds.data = []);
+
+            dataList.forEach(item => {
+                wheelChart.data.labels.push(normalizeDateStr(item.time));
+                wheelChart.data.datasets[0].data.push(item.rpm || 0);
+                wheelChart.data.datasets[1].data.push(item.speed || 0);
+                wheelChart.data.datasets[2].data.push(item.duration || 0);
+                wheelChart.data.datasets[3].data.push(item.weight !== undefined ? item.weight : null);
+            });
+            wheelChart.update();
+        }
+
+        function updateStatsAndHourly(record) {
+            const displayDateStr = normalizeDateStr(record.time);
+            document.getElementById('displayDate').textContent = displayDateStr;
+            document.getElementById('displayWeight').textContent = record.weight !== undefined ? record.weight : "--";
+            document.getElementById('displayTimeRange').textContent = record.timeRange || "--:-- ～ --:--";
+            document.getElementById('totalDuration').textContent = record.duration || 0;
+            document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
+
+            const rpm = record.rpm || 0;
+            let rpmText = `${rpm.toLocaleString()} 回`;
+            if (record.diameter && record.diameter > 0) {
+                const distMeter = Math.floor(rpm * Math.PI * (record.diameter / 100));
+                rpmText += `（${distMeter.toLocaleString()} m）`;
+            }
+            document.getElementById('totalRpm').textContent = rpmText;
+
+            document.getElementById('hourlyTitle').textContent = `【24時間分布 (${displayDateStr} 12:00 〜 翌11:00)】`;
+
+            let hourlyData = record.hourly || new Array(24).fill(0);
+            hourlyChart.data.datasets[0].data = hourlyData;
+            hourlyChart.update();
+        }
+
+        function clearStatsAndHourly(dateStr) {
+            document.getElementById('displayDate').textContent = dateStr;
+            document.getElementById('displayWeight').textContent = "--";
+            document.getElementById('displayTimeRange').textContent = "--:-- ～ --:--";
+            document.getElementById('totalDuration').textContent = "--";
+            document.getElementById('avgSpeed').textContent = "--";
+            document.getElementById('totalRpm').textContent = "-- 回";
+            document.getElementById('hourlyTitle').textContent = `【24時間分布 (12:00 〜 翌11:00)】`;
+            hourlyChart.data.datasets[0].data = new Array(24).fill(0);
+            hourlyChart.update();
+        }
+
+        renderRecentData(50);
+
+        document.getElementById('deviceSelect').addEventListener('change', () => {
+            renderRecentData(50);
+        });
+
+        // --- Bluetooth 受信バッファ ---
+        const connectBtn = document.getElementById('connectBtn');
+        let byteBuffer = new Uint8Array(0);
+
+        connectBtn.addEventListener('click', async () => {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [0xFFE0] }],
+                    optionalServices: [0xFFE0]
+                });
+
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(0xFFE0);
+                const characteristic = await service.getCharacteristic(0xFFE1);
+
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', handleData);
+                
+                const deviceName = device.name ? device.name.trim() : "GIGI-01";
+                updateDeviceSelectOptions(deviceName);
+                migrateOldStorageData();
+
+                connectBtn.textContent = `接続中: ${deviceName}`;
+                renderRecentData(50);
+                alert(`Bluetoothデバイス [${deviceName}] に接続しました！`);
+            } catch (error) {
+                console.error(error);
+                alert("接続に失敗しましたまたはキャンセルされました。");
+            }
+        });
+
+        document.getElementById('renameBtn').addEventListener('click', () => {
+            const currentKey = getCurrentDeviceKey();
+            const newName = prompt("現在選択している個体の新しい名前を入力してください:", currentKey);
+            
+            if (newName && newName.trim() !== "" && newName.trim() !== currentKey) {
+                const trimmedName = newName.trim();
+                const oldData = localStorage.getItem(`wheelData_${currentKey}`);
+                if (oldData) {
+                    localStorage.setItem(`wheelData_${trimmedName}`, oldData);
+                    localStorage.removeItem(`wheelData_${currentKey}`);
+                }
+                updateDeviceSelectOptions(trimmedName);
+                renderRecentData(50);
+                alert(`個体名を [${trimmedName}] に変更しました！`);
+            }
+        });
+
+        // --- バイナリ＋テキスト対応の受信ハンドラ ---
+        function handleData(event) {
+            const incoming = new Uint8Array(event.target.value.buffer);
+            
+            const merged = new Uint8Array(byteBuffer.length + incoming.length);
+            merged.set(byteBuffer, 0);
+            merged.set(incoming, byteBuffer.length);
+            byteBuffer = merged;
+
+            let newlineIndex;
+            while ((newlineIndex = byteBuffer.indexOf(0x0A)) !== -1) {
+                let packetEnd = newlineIndex;
+                if (packetEnd > 0 && byteBuffer[packetEnd - 1] === 0x0D) {
+                    packetEnd--;
+                }
+
+                const packet = byteBuffer.subarray(0, packetEnd);
+                byteBuffer = byteBuffer.subarray(newlineIndex + 1);
+
+                parsePacket(packet);
+            }
+        }
+
+        // パケットの解析（CSV文字列 + 末尾バイナリ時刻/直径）
+        function parsePacket(packet) {
+            let timeRangeStr = "";
+            let diameterVal = undefined;
+            let textBytes = packet;
+
+            if (packet.length >= 5) {
+                const sH = packet[packet.length - 5];
+                const sM = packet[packet.length - 4];
+                const eH = packet[packet.length - 3];
+                const eM = packet[packet.length - 2];
+                const d  = packet[packet.length - 1];
+
+                if (sH < 24 && sM < 60 && eH < 24 && eM < 60) {
+                    timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
+                    diameterVal = d > 0 ? d : undefined;
+                    textBytes = packet.subarray(0, packet.length - 5);
+                }
+            }
+
+            if (!timeRangeStr && packet.length >= 4) {
+                const sH = packet[packet.length - 4];
+                const sM = packet[packet.length - 3];
+                const eH = packet[packet.length - 2];
+                const eM = packet[packet.length - 1];
+
+                if (sH < 24 && sM < 60 && eH < 24 && eM < 60) {
+                    timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
+                    textBytes = packet.subarray(0, packet.length - 4);
+                }
+            }
+
+            const csvLine = new TextDecoder('utf-8').decode(textBytes).trim();
+            if (csvLine.length > 0) {
+                processCSV(csvLine, timeRangeStr, diameterVal);
+            }
+        }
+
+        // --- データ登録処理 ---
+        function processCSV(csvLine, timeRangeStr = "", diameterVal = undefined) {
+            const values = csvLine.split(',');
+            if (values.length < 5) return; 
+
+            const dateValue = normalizeDateStr(values[0]);
+            const rpmValue = parseFloat(values[1]);
+            const speedValue = parseFloat(values[2]);
+            const timeValue = parseFloat(values[3]);
+            const weightVal = values[4] !== "" ? parseFloat(values[4]) : undefined;
+            
+            let hourlyArr = [];
+            for (let i = 5; i < Math.min(values.length, 29); i++) {
+                hourlyArr.push(parseFloat(values[i]) || 0);
+            }
+            while (hourlyArr.length < 24) hourlyArr.push(0);
+
+            if (!dateValue || isNaN(rpmValue)) return; 
+
+            let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+            const existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateValue);
+            
+            if (existingIndex !== -1) {
+                history[existingIndex].rpm = rpmValue;
+                history[existingIndex].speed = speedValue;
+                history[existingIndex].duration = timeValue;
+                if (weightVal !== undefined) history[existingIndex].weight = weightVal;
+                history[existingIndex].hourly = hourlyArr;
+                if (timeRangeStr) history[existingIndex].timeRange = timeRangeStr;
+                if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
+            } else {
+                history.push({ 
+                    time: dateValue, 
+                    rpm: rpmValue, 
+                    speed: speedValue, 
+                    duration: timeValue, 
+                    weight: weightVal, 
+                    hourly: hourlyArr,
+                    timeRange: timeRangeStr,
+                    diameter: diameterVal
+                });
+                if (history.length > 10000) history.shift();
+            }
+
+            history.sort((a, b) => new Date(a.time) - new Date(b.time));
+            localStorage.setItem(getStorageKey(), JSON.stringify(history));
+            renderRecentData(50);
+        }
+
+        // --- 体重の手動保存 ---
+        document.getElementById('saveWeightBtn').addEventListener('click', () => {
+            const weightVal = parseFloat(document.getElementById('weightInput').value);
+            if (isNaN(weightVal)) {
+                alert("有効な体重の数値を入力してください。");
+                return;
+            }
+
+            let targetDateStr = normalizeDateStr(document.getElementById('dateFilter').value);
+            if (!targetDateStr) {
+                targetDateStr = formatDateString(new Date());
+            }
+
+            let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+            let existingIndex = history.findIndex(item => normalizeDateStr(item.time) === targetDateStr);
+
+            if (existingIndex !== -1) {
+                history[existingIndex].weight = weightVal;
+            } else {
+                history.push({ time: targetDateStr, rpm: 0, speed: 0, duration: 0, weight: weightVal, hourly: new Array(24).fill(0), timeRange: "" });
+            }
+
+            history.sort((a, b) => new Date(a.time) - new Date(b.time));
+            localStorage.setItem(getStorageKey(), JSON.stringify(history));
+            alert(`[${getCurrentDeviceKey()}] ${targetDateStr} の体重 ${weightVal}g を保存しました！`);
+            showDateDataAndAround(targetDateStr);
+        });
+
+        // --- CSVインポート処理 ---
+        document.getElementById('importCsvFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const text = event.target.result;
+                const lines = text.split(/\r\n|\n/);
+                let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+                let importedCount = 0;
+
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+
+                    const cols = line.split(',');
+                    if (cols.length < 4) continue;
+
+                    const dateVal = normalizeDateStr(cols[0]);
+                    const rpmVal = parseFloat(cols[1]) || 0;
+                    const speedVal = parseFloat(cols[2]) || 0;
+                    const timeVal = parseFloat(cols[3]) || 0;
+                    const weightVal = cols[4] !== undefined && cols[4] !== "" ? parseFloat(cols[4]) : undefined;
+
+                    let hourlyArr = [];
+                    for (let h = 5; h < Math.min(cols.length, 29); h++) {
+                        hourlyArr.push(parseFloat(cols[h]) || 0);
+                    }
+                    while (hourlyArr.length < 24) hourlyArr.push(0);
+
+                    let timeRangeVal = "";
+                    if (cols.length >= 33 && cols[29] !== "" && cols[30] !== "" && cols[31] !== "" && cols[32] !== "") {
+                        const sH = pad2(parseInt(cols[29], 10));
+                        const sM = pad2(parseInt(cols[30], 10));
+                        const eH = pad2(parseInt(cols[31], 10));
+                        const eM = pad2(parseInt(cols[32], 10));
+                        timeRangeVal = `${sH}:${sM} ～ ${eH}:${eM}`;
+                    } else if (cols[29] && cols[29].includes("～")) {
+                        timeRangeVal = cols[29].trim();
+                    }
+
+                    let diameterVal = undefined;
+                    if (cols.length >= 34 && cols[33] !== undefined && cols[33].trim() !== "") {
+                        const d = parseFloat(cols[33]);
+                        if (!isNaN(d) && d > 0) diameterVal = d;
+                    }
+
+                    if (!dateVal) continue;
+
+                    let existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateVal);
+                    if (existingIndex !== -1) {
+                        history[existingIndex].time = dateVal;
+                        history[existingIndex].rpm = rpmVal;
+                        history[existingIndex].speed = speedVal;
+                        history[existingIndex].duration = timeVal;
+                        if (weightVal !== undefined) history[existingIndex].weight = weightVal;
+                        if (hourlyArr.some(v => v > 0)) history[existingIndex].hourly = hourlyArr;
+                        if (timeRangeVal) history[existingIndex].timeRange = timeRangeVal;
+                        if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
+                    } else {
+                        history.push({
+                            time: dateVal,
+                            rpm: rpmVal,
+                            speed: speedVal,
+                            duration: timeVal,
+                            weight: weightVal,
+                            hourly: hourlyArr,
+                            timeRange: timeRangeVal,
+                            diameter: diameterVal
+                        });
+                    }
+                    importedCount++;
+                }
+
+                history.sort((a, b) => new Date(a.time) - new Date(b.time));
+                localStorage.setItem(getStorageKey(), JSON.stringify(history));
+                updateDeviceSelectOptions(getCurrentDeviceKey());
+                renderRecentData(50);
+                alert(`[${getCurrentDeviceKey()}] に ${importedCount} 件のデータをインポートしました！`);
+                e.target.value = "";
+            };
+            reader.readAsText(file, 'UTF-8');
+        });
+
+        // --- 棒グラフ項目切替 ---
+        document.getElementById('barTargetSelect').addEventListener('change', (e) => {
+            const selectedIndex = parseInt(e.target.value);
+            wheelChart.data.datasets.forEach((ds, index) => {
+                if (index === selectedIndex) {
+                    ds.type = 'bar';
+                    ds.backgroundColor = metricStyles[index].bgColor;
+                    ds.borderColor = metricStyles[index].borderColor;
+                    ds.borderWidth = 1;
+                    ds.order = 2;
+                } else {
+                    ds.type = 'line';
+                    ds.backgroundColor = 'transparent';
+                    ds.borderColor = metricStyles[index].borderColor;
+                    ds.borderWidth = 2;
+                    ds.tension = 0.1;
+                    ds.order = 1;
+                }
+            });
+            wheelChart.update();
+        });
+
+        // --- 日付操作・ナビゲーション ---
+        const dateFilter = document.getElementById('dateFilter');
+
+        function showDateDataAndAround(targetDateStr) {
+            const normDate = normalizeDateStr(targetDateStr);
+            dateFilter.value = normDate;
+            renderDataAroundDate(normDate, 50);
+        }
+
+        document.getElementById('filterBtn').addEventListener('click', () => {
+            if (!dateFilter.value) { alert("日付を選択してください。"); return; }
+            showDateDataAndAround(dateFilter.value);
+        });
+
+        function shiftDate(days) {
+            let baseDateStr = dateFilter.value;
+            if (!baseDateStr) {
+                const displayDateEl = document.getElementById('displayDate');
+                if (displayDateEl && displayDateEl.textContent && displayDateEl.textContent !== '--') {
+                    baseDateStr = displayDateEl.textContent;
+                }
+            }
+
+            let baseDate = parseDateString(baseDateStr);
+
+            if (!baseDate) {
+                let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+                if (history.length > 0) {
+                    history.sort((a, b) => new Date(a.time) - new Date(b.time));
+                    baseDate = parseDateString(history[history.length - 1].time);
+                }
+            }
+
+            if (!baseDate) {
+                baseDate = new Date();
+            }
+
+            baseDate.setDate(baseDate.getDate() + days);
+            showDateDataAndAround(formatDateString(baseDate));
+        }
+
+        document.getElementById('prevDayBtn').addEventListener('click', () => shiftDate(-1));
+        document.getElementById('nextDayBtn').addEventListener('click', () => shiftDate(1));
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            renderRecentData(50);
+        });
+
+        // --- CSV一括ダウンロード ---
+        document.getElementById('downloadCsvBtn').addEventListener('click', () => {
+            let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
+            if (history.length === 0) { alert("保存するデータがありません。"); return; }
+
+            history.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分,直径(cm)\r\n";
+            history.forEach(item => {
+                const w = item.weight !== undefined ? item.weight : "";
+                let hourlyStr = "";
+                let arr = item.hourly || new Array(24).fill(0);
+                for (let h = 0; h < 24; h++) {
+                    hourlyStr += `,${arr[h] || 0}`;
+                }
+
+                let timeCols = ["", "", "", ""];
+                if (item.timeRange && item.timeRange.includes("～")) {
+                    const match = item.timeRange.match(/(\d{1,2}):(\d{1,2})\s*～\s*(\d{1,2}):(\d{1,2})/);
+                    if (match) {
+                        timeCols = [
+                            parseInt(match[1], 10),
+                            parseInt(match[2], 10),
+                            parseInt(match[3], 10),
+                            parseInt(match[4], 10)
+                        ];
+                    }
+                }
+
+                const diameterStr = item.diameter !== undefined ? item.diameter : "";
+                csvContent += `${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr}\r\n`;
+            });
+
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+            const today = formatDateString(new Date());
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${getCurrentDeviceKey()}_wheel_data_${today}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        });
+
+        // --- データ全消去 ---
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            const currentName = getCurrentDeviceKey();
+            if (confirm(`本当に個体 [${currentName}] のすべてのデータを消去しますか？`)) {
+                localStorage.removeItem(getStorageKey());
+                renderRecentData(50);
+                alert(`個体 [${currentName}] のデータを消去しました。`);
+            }
+        });
+    </script>
+</body>
+</html>
