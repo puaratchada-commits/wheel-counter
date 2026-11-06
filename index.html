@@ -16,6 +16,7 @@
         .device-box { background: #e3f2fd; padding: 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
         .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
         .import-box { background: #fff3e0; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; }
+        .date-controls { margin: 18px auto; max-width: 650px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px; }
         h3 { margin: 10px 0 5px 0; color: #1976d2; }
     </style>
 </head>
@@ -46,7 +47,7 @@
         <input type="file" id="importCsvFile" accept=".csv" style="font-size: 14px;">
     </div>
 
-    <!-- 棒グラフ対象の選択メニュー -->
+    <!-- 棒グラフ対象の選択 & データ管理ボタン -->
     <div class="controls">
         <label for="barTargetSelect">全体棒グラフの対象: </label>
         <select id="barTargetSelect">
@@ -55,15 +56,6 @@
             <option value="1">平均速度 (cm/s)</option>
             <option value="3">体重 (g)</option>
         </select>
-    </div>
-
-    <!-- 日付操作・管理コントロール -->
-    <div class="controls">
-        <button id="prevDayBtn">◀ 前日</button>
-        <input type="date" id="dateFilter">
-        <button id="nextDayBtn">翌日 ▶</button>
-        <button id="filterBtn">指定日周辺を表示</button>
-        <button id="resetBtn">最新に戻る</button>
         <button id="downloadCsvBtn" style="background-color: #e8f5e9; border: 1px solid #4caf50;">CSV保存</button>
         <button id="clearBtn" style="color: red;">データ全消去</button>
     </div>
@@ -72,6 +64,15 @@
     <div class="chart-box">
         <h3>【日付ごとの推移】</h3>
         <canvas id="wheelChart"></canvas>
+    </div>
+
+    <!-- 日付操作コントロール（グラフ間に移動） -->
+    <div class="date-controls">
+        <button id="prevDayBtn">◀ 前日</button>
+        <input type="date" id="dateFilter">
+        <button id="nextDayBtn">翌日 ▶</button>
+        <button id="filterBtn">指定日周辺を表示</button>
+        <button id="resetBtn">最新に戻る</button>
     </div>
 
     <!-- 12時〜翌11時 時間帯別分布グラフ -->
