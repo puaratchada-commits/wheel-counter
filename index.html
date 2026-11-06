@@ -12,7 +12,7 @@
         button { background-color: #fff; transition: background 0.2s; }
         button:hover { background-color: #f0f0f0; }
         .chart-box { width: 100%; max-width: 650px; margin: 15px auto; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
-        #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; border: 1px solid #e0e0e0; }
+        #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; border: 1px solid #e0e0e0; line-height: 1.8; }
         .device-box { background: #e3f2fd; padding: 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
         .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
         .import-box { background: #fff3e0; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; }
@@ -97,13 +97,15 @@
         対象個体: <span id="displayDeviceName" style="color: #d32f2f; font-weight: bold;">--</span><br>
         対象日付: <span id="displayDate" style="color: #1976d2; font-weight: bold;">--</span><br>
         体重: <span id="displayWeight">--</span> g<br>
+        運動時間帯: <span id="displayTimeRange" style="font-weight: bold; color: #2e7d32;">--:-- ～ --:--</span><br>
         総運動時間: <span id="totalDuration">--</span> 分<br>
         平均速度: <span id="avgSpeed">--</span> cm/s<br>
         総回転数: <span id="totalRpm">--</span> 回
     </div>
 
     <script>
-        // 日付文字列を YYYY-MM-DD 形式に統一する関数
+        const pad2 = (n) => String(n).padStart(2, '0');
+
         function normalizeDateStr(str) {
             if (!str) return "";
             const cleaned = str.replace(/\s*\(.*?\)/, '').trim();
@@ -113,7 +115,7 @@
                 const m = parseInt(parts[1], 10);
                 const d = parseInt(parts[2], 10);
                 if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
-                    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    return `${y}-${pad2(m)}-${pad2(d)}`;
                 }
             }
             return cleaned;
@@ -132,12 +134,11 @@
 
         function formatDateString(dateObj) {
             const yyyy = dateObj.getFullYear();
-            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const dd = String(dateObj.getDate()).padStart(2, '0');
+            const mm = pad2(dateObj.getMonth() + 1);
+            const dd = pad2(dateObj.getDate());
             return `${yyyy}-${mm}-${dd}`;
         }
 
-        // --- 起動時の自動データ移行 ---
         function migrateOldStorageData() {
             const currentKey = getCurrentDeviceKey();
             const targetStorageKey = `wheelData_${currentKey}`;
@@ -227,7 +228,6 @@
         updateDeviceSelectOptions(localStorage.getItem('activeSelectedDevice') || 'GIGI-01');
         migrateOldStorageData();
 
-        // --- スタイル定義 ---
         const metricStyles = [
             { borderColor: 'rgb(75, 192, 192)', bgColor: 'rgba(75, 192, 192, 0.3)' }, 
             { borderColor: 'rgb(255, 99, 132)',  bgColor: 'rgba(255, 99, 132, 0.3)' },  
@@ -235,7 +235,6 @@
             { borderColor: 'rgb(156, 39, 176)',  bgColor: 'rgba(156, 39, 176, 0.3)' }   
         ];
 
-        // --- 1. 全体推移 Chart.js 初期設定 ---
         const ctx = document.getElementById('wheelChart').getContext('2d');
         const wheelChart = new Chart(ctx, {
             type: 'line',
@@ -267,7 +266,6 @@
             }
         });
 
-        // --- 2. 12時〜翌11時 時間帯別分布 Chart.js 初期設定 ---
         const hourlyLabels = [
             "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", 
             "20:00", "21:00", "22:00", "23:00", "0:00", "1:00", "2:00", "3:00", 
@@ -295,7 +293,6 @@
             }
         });
 
-        // チェックボックス切替
         document.querySelectorAll('.metric-toggle').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 const index = parseInt(e.target.getAttribute('data-index'));
@@ -304,7 +301,6 @@
             });
         });
 
-        // --- グラフ描画ヘルパー ---
         function renderRecentData(limit = 50) {
             migrateOldStorageData();
             const currentKey = getCurrentDeviceKey();
@@ -379,6 +375,7 @@
             const displayDateStr = normalizeDateStr(record.time);
             document.getElementById('displayDate').textContent = displayDateStr;
             document.getElementById('displayWeight').textContent = record.weight !== undefined ? record.weight : "--";
+            document.getElementById('displayTimeRange').textContent = record.timeRange || "--:-- ～ --:--";
             document.getElementById('totalDuration').textContent = record.duration || 0;
             document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
             document.getElementById('totalRpm').textContent = (record.rpm || 0).toLocaleString();
@@ -393,6 +390,7 @@
         function clearStatsAndHourly(dateStr) {
             document.getElementById('displayDate').textContent = dateStr;
             document.getElementById('displayWeight').textContent = "--";
+            document.getElementById('displayTimeRange').textContent = "--:-- ～ --:--";
             document.getElementById('totalDuration').textContent = "--";
             document.getElementById('avgSpeed').textContent = "--";
             document.getElementById('totalRpm').textContent = "--";
@@ -407,9 +405,9 @@
             renderRecentData(50);
         });
 
-        // --- Bluetooth 接続 ---
+        // --- Bluetooth 受信バッファ（バイナリ対応 Uint8Array） ---
         const connectBtn = document.getElementById('connectBtn');
-        let receiveBuffer = "";
+        let byteBuffer = new Uint8Array(0);
 
         connectBtn.addEventListener('click', async () => {
             try {
@@ -455,20 +453,58 @@
             }
         });
 
+        // --- バイナリ＋テキスト対応の受信ハンドラ ---
         function handleData(event) {
-            const text = new TextDecoder().decode(event.target.value);
-            receiveBuffer += text;
-            let lines = receiveBuffer.split('\n');
-            receiveBuffer = lines.pop(); 
+            const incoming = new Uint8Array(event.target.value.buffer);
+            
+            // バッファを結合
+            const merged = new Uint8Array(byteBuffer.length + incoming.length);
+            merged.set(byteBuffer, 0);
+            merged.set(incoming, byteBuffer.length);
+            byteBuffer = merged;
 
-            for (let line of lines) {
-                line = line.trim();
-                if (line.length > 0) processCSV(line);
+            // 改行 (\n = 0x0A) を区切りとして1行ずつパケットを取り出す
+            let newlineIndex;
+            while ((newlineIndex = byteBuffer.indexOf(0x0A)) !== -1) {
+                let packetEnd = newlineIndex;
+                if (packetEnd > 0 && byteBuffer[packetEnd - 1] === 0x0D) { // \r を除外
+                    packetEnd--;
+                }
+
+                const packet = byteBuffer.subarray(0, packetEnd);
+                byteBuffer = byteBuffer.subarray(newlineIndex + 1);
+
+                parsePacket(packet);
             }
         }
 
-        // --- データ受信処理 (12時〜翌11時の24時間配列対応) ---
-        function processCSV(csvLine) {
+        // パケットの解析（CSV文字列 + 末尾4バイトバイナリ時刻）
+        function parsePacket(packet) {
+            let timeRangeStr = "";
+            let textBytes = packet;
+
+            // 末尾4バイトが時刻バイナリ [starthour, startminute, endhour, endminute] かを判定
+            if (packet.length >= 4) {
+                const sH = packet[packet.length - 4];
+                const sM = packet[packet.length - 3];
+                const eH = packet[packet.length - 2];
+                const eM = packet[packet.length - 1];
+
+                // 24時間表記の妥当性確認 (0-23時, 0-59分)
+                if (sH < 24 && sM < 60 && eH < 24 && eM < 60) {
+                    timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
+                    textBytes = packet.subarray(0, packet.length - 4);
+                }
+            }
+
+            const csvLine = new TextDecoder('utf-8').decode(textBytes).trim();
+            if (csvLine.length > 0) {
+                processCSV(csvLine, timeRangeStr);
+            }
+        }
+
+        // --- データ受信処理 (12時〜翌11時の24時間配列 + 時刻範囲対応) ---
+        function processCSV(csvLine, timeRangeStr = "") {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
 
@@ -495,6 +531,7 @@
                 history[existingIndex].duration = timeValue;
                 if (weightVal !== undefined) history[existingIndex].weight = weightVal;
                 history[existingIndex].hourly = hourlyArr;
+                if (timeRangeStr) history[existingIndex].timeRange = timeRangeStr;
             } else {
                 history.push({ 
                     time: dateValue, 
@@ -502,7 +539,8 @@
                     speed: speedValue, 
                     duration: timeValue, 
                     weight: weightVal, 
-                    hourly: hourlyArr 
+                    hourly: hourlyArr,
+                    timeRange: timeRangeStr
                 });
                 if (history.length > 10000) history.shift();
             }
@@ -531,7 +569,7 @@
             if (existingIndex !== -1) {
                 history[existingIndex].weight = weightVal;
             } else {
-                history.push({ time: targetDateStr, rpm: 0, speed: 0, duration: 0, weight: weightVal, hourly: new Array(24).fill(0) });
+                history.push({ time: targetDateStr, rpm: 0, speed: 0, duration: 0, weight: weightVal, hourly: new Array(24).fill(0), timeRange: "" });
             }
 
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -540,7 +578,7 @@
             showDateDataAndAround(targetDateStr);
         });
 
-        // --- CSVインポート処理 (スラッシュ日付もハイフンに正規化) ---
+        // --- CSVインポート処理 ---
         document.getElementById('importCsvFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -571,6 +609,9 @@
                     }
                     while (hourlyArr.length < 24) hourlyArr.push(0);
 
+                    // 30列目に運動時間帯があれば読み込み
+                    const timeRangeVal = cols[29] || "";
+
                     if (!dateVal) continue;
 
                     let existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateVal);
@@ -581,6 +622,7 @@
                         history[existingIndex].duration = timeVal;
                         if (weightVal !== undefined) history[existingIndex].weight = weightVal;
                         if (hourlyArr.some(v => v > 0)) history[existingIndex].hourly = hourlyArr;
+                        if (timeRangeVal) history[existingIndex].timeRange = timeRangeVal;
                     } else {
                         history.push({
                             time: dateVal,
@@ -588,7 +630,8 @@
                             speed: speedVal,
                             duration: timeVal,
                             weight: weightVal,
-                            hourly: hourlyArr
+                            hourly: hourlyArr,
+                            timeRange: timeRangeVal
                         });
                     }
                     importedCount++;
@@ -640,7 +683,6 @@
             showDateDataAndAround(dateFilter.value);
         });
 
-        // 前日・翌日ボタン処理（日付形式の正規化と前後移動）
         function shiftDate(days) {
             let baseDateStr = dateFilter.value;
             if (!baseDateStr) {
@@ -675,14 +717,14 @@
             renderRecentData(50);
         });
 
-        // --- CSV一括ダウンロード (24時間配列データを含む) ---
+        // --- CSV一括ダウンロード ---
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
 
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
-            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時\r\n";
+            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,運動時間帯\r\n";
             history.forEach(item => {
                 const w = item.weight !== undefined ? item.weight : "";
                 let hourlyStr = "";
@@ -690,7 +732,8 @@
                 for (let h = 0; h < 24; h++) {
                     hourlyStr += `,${arr[h] || 0}`;
                 }
-                csvContent += `${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr}\r\n`;
+                const tr = item.timeRange || "";
+                csvContent += `${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${tr}\r\n`;
             });
 
             const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
