@@ -378,7 +378,16 @@
             document.getElementById('displayTimeRange').textContent = record.timeRange || "--:-- ～ --:--";
             document.getElementById('totalDuration').textContent = record.duration || 0;
             document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
-            document.getElementById('totalRpm').textContent = (record.rpm || 0).toLocaleString();
+
+            // 総回転数と距離（m）の表示計算
+            const rpm = record.rpm || 0;
+            let rpmText = rpm.toLocaleString();
+            if (record.diameter && record.diameter > 0) {
+                // 走行距離 (m) = 回転数 × (π × 直径cm / 100) ※小数点以下切り捨て
+                const distMeter = Math.floor(rpm * Math.PI * (record.diameter / 100));
+                rpmText += `（${distMeter.toLocaleString()} m）`;
+            }
+            document.getElementById('totalRpm').textContent = rpmText;
 
             document.getElementById('hourlyTitle').textContent = `【24時間分布 (${displayDateStr} 12:00 〜 翌11:00)】`;
 
@@ -477,12 +486,29 @@
             }
         }
 
-        // パケットの解析（CSV文字列 + 末尾4バイトバイナリ時刻）
+        // パケットの解析（CSV文字列 + 末尾バイナリ時刻/直径）
         function parsePacket(packet) {
             let timeRangeStr = "";
+            let diameterVal = undefined;
             let textBytes = packet;
 
-            if (packet.length >= 4) {
+            // パターンA: 末尾5バイト [starthour, startminute, endhour, endminute, wheelDiameter]
+            if (packet.length >= 5) {
+                const sH = packet[packet.length - 5];
+                const sM = packet[packet.length - 4];
+                const eH = packet[packet.length - 3];
+                const eM = packet[packet.length - 2];
+                const d  = packet[packet.length - 1];
+
+                if (sH < 24 && sM < 60 && eH < 24 && eM < 60) {
+                    timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
+                    diameterVal = d > 0 ? d : undefined;
+                    textBytes = packet.subarray(0, packet.length - 5);
+                }
+            }
+
+            // パターンB: 末尾4バイト（直径なし・時刻のみ）の場合の後方互換
+            if (!timeRangeStr && packet.length >= 4) {
                 const sH = packet[packet.length - 4];
                 const sM = packet[packet.length - 3];
                 const eH = packet[packet.length - 2];
@@ -496,12 +522,12 @@
 
             const csvLine = new TextDecoder('utf-8').decode(textBytes).trim();
             if (csvLine.length > 0) {
-                processCSV(csvLine, timeRangeStr);
+                processCSV(csvLine, timeRangeStr, diameterVal);
             }
         }
 
         // --- データ登録処理 ---
-        function processCSV(csvLine, timeRangeStr = "") {
+        function processCSV(csvLine, timeRangeStr = "", diameterVal = undefined) {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
 
@@ -529,6 +555,7 @@
                 if (weightVal !== undefined) history[existingIndex].weight = weightVal;
                 history[existingIndex].hourly = hourlyArr;
                 if (timeRangeStr) history[existingIndex].timeRange = timeRangeStr;
+                if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
             } else {
                 history.push({ 
                     time: dateValue, 
@@ -537,7 +564,8 @@
                     duration: timeValue, 
                     weight: weightVal, 
                     hourly: hourlyArr,
-                    timeRange: timeRangeStr
+                    timeRange: timeRangeStr,
+                    diameter: diameterVal
                 });
                 if (history.length > 10000) history.shift();
             }
@@ -575,7 +603,7 @@
             showDateDataAndAround(targetDateStr);
         });
 
-        // --- CSVインポート処理 (29, 30, 31, 32列目の時刻4分割に対応) ---
+        // --- CSVインポート処理 (時刻4分割 ＋ 直径対応) ---
         document.getElementById('importCsvFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -618,6 +646,13 @@
                         timeRangeVal = cols[29].trim();
                     }
 
+                    // 直径データ（34列目・インデックス33）の解析
+                    let diameterVal = undefined;
+                    if (cols.length >= 34 && cols[33] !== undefined && cols[33].trim() !== "") {
+                        const d = parseFloat(cols[33]);
+                        if (!isNaN(d) && d > 0) diameterVal = d;
+                    }
+
                     if (!dateVal) continue;
 
                     let existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateVal);
@@ -629,6 +664,7 @@
                         if (weightVal !== undefined) history[existingIndex].weight = weightVal;
                         if (hourlyArr.some(v => v > 0)) history[existingIndex].hourly = hourlyArr;
                         if (timeRangeVal) history[existingIndex].timeRange = timeRangeVal;
+                        if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
                     } else {
                         history.push({
                             time: dateVal,
@@ -637,7 +673,8 @@
                             duration: timeVal,
                             weight: weightVal,
                             hourly: hourlyArr,
-                            timeRange: timeRangeVal
+                            timeRange: timeRangeVal,
+                            diameter: diameterVal
                         });
                     }
                     importedCount++;
@@ -723,14 +760,14 @@
             renderRecentData(50);
         });
 
-        // --- CSV一括ダウンロード (開始時,開始分,終了時,終了分の4列出力に準拠) ---
+        // --- CSV一括ダウンロード (直径も末尾列に出力) ---
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
 
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
-            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分\r\n";
+            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分,直径(cm)\r\n";
             history.forEach(item => {
                 const w = item.weight !== undefined ? item.weight : "";
                 let hourlyStr = "";
@@ -752,7 +789,8 @@
                     }
                 }
 
-                csvContent += `${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')}\r\n`;
+                const diameterStr = item.diameter !== undefined ? item.diameter : "";
+                csvContent += `${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr}\r\n`;
             });
 
             const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
