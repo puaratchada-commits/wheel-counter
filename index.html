@@ -396,15 +396,15 @@
         function updateStatsAndHourly(record) {
             const displayDateStr = normalizeDateStr(record.time);
             document.getElementById('displayDate').textContent = displayDateStr;
-            document.getElementById('displayWeight').textContent = record.weight !== undefined ? record.weight : "--";
+            document.getElementById('displayWeight').textContent = (record.weight !== undefined && record.weight !== null) ? record.weight : "--";
             
-            // 運動時間帯の更新
+            // 運動時間帯
             document.getElementById('displayTimeRange').textContent = record.timeRange || "--:-- ～ --:--";
             
             document.getElementById('totalDuration').textContent = record.duration || 0;
             document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
 
-            // 総回転数と距離（m）の表示計算
+            // 総回転数と距離（m）
             const rpm = record.rpm || 0;
             let rpmText = `${rpm.toLocaleString()} 回`;
             if (record.diameter && record.diameter > 0) {
@@ -507,7 +507,6 @@
             }
         });
 
-        // Bluetoothテキスト受信ハンドラ
         function handleData(event) {
             const text = new TextDecoder('utf-8').decode(event.target.value);
             receiveBuffer += text;
@@ -520,7 +519,7 @@
             }
         }
 
-        // --- データ登録処理（CSVテキスト末尾の時刻・直径を直接解析） ---
+        // --- データ登録処理（Bluetooth体重なし・CSVインポート体重ありの自動判別） ---
         function processCSV(csvLine) {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
@@ -529,31 +528,54 @@
             const rpmValue = parseFloat(values[1]);
             const speedValue = parseFloat(values[2]);
             const timeValue = parseFloat(values[3]);
-            const weightVal = values[4] !== "" ? parseFloat(values[4]) : undefined;
-            
-            // 24時間分布（インデックス 5 〜 28）
+
+            let timeRangeStr = "";
+            let diameterVal = undefined;
             let hourlyArr = [];
-            for (let i = 5; i < Math.min(values.length, 29); i++) {
-                hourlyArr.push(parseFloat(values[i]) || 0);
+            let weightVal = undefined;
+
+            // 末尾5要素が「開始時, 開始分, 終了時, 終了分, 直径」か判定
+            if (values.length >= 9) {
+                const last5 = values.slice(-5);
+                const sH = parseInt(last5[0], 10);
+                const sM = parseInt(last5[1], 10);
+                const eH = parseInt(last5[2], 10);
+                const eM = parseInt(last5[3], 10);
+                const d  = parseFloat(last5[4]);
+
+                if (!isNaN(sH) && sH < 24 && !isNaN(sM) && sM < 60 &&
+                    !isNaN(eH) && eH < 24 && !isNaN(eM) && eM < 60) {
+                    timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
+                    if (!isNaN(d) && d > 0) diameterVal = d;
+
+                    // 末尾5要素を除いた残りの配列
+                    const bodyCols = values.slice(4, values.length - 5);
+
+                    if (bodyCols.length >= 25) {
+                        // 体重あり（CSV保存・インポート時）: [0]が体重、[1〜24]が24時間データ
+                        if (bodyCols[0] !== "") weightVal = parseFloat(bodyCols[0]);
+                        for (let h = 1; h <= 24; h++) {
+                            hourlyArr.push(parseFloat(bodyCols[h]) || 0);
+                        }
+                    } else {
+                        // 体重なし（Bluetooth送信時: 計24個の24時間データが直接並ぶ）
+                        for (let h = 0; h < Math.min(bodyCols.length, 24); h++) {
+                            hourlyArr.push(parseFloat(bodyCols[h]) || 0);
+                        }
+                    }
+                }
+            }
+
+            // 従来の形式（末尾時刻・直径なし）のフォールバック処理
+            if (hourlyArr.length === 0) {
+                if (values[4] !== "" && values[4] !== undefined) {
+                    weightVal = parseFloat(values[4]);
+                }
+                for (let i = 5; i < Math.min(values.length, 29); i++) {
+                    hourlyArr.push(parseFloat(values[i]) || 0);
+                }
             }
             while (hourlyArr.length < 24) hourlyArr.push(0);
-
-            // ★末尾のテキスト時刻（開始時[29], 開始分[30], 終了時[31], 終了分[32]）を取り出す
-            let timeRangeStr = "";
-            if (values.length >= 33 && values[29] !== "" && values[30] !== "" && values[31] !== "" && values[32] !== "") {
-                const sH = pad2(parseInt(values[29], 10));
-                const sM = pad2(parseInt(values[30], 10));
-                const eH = pad2(parseInt(values[31], 10));
-                const eM = pad2(parseInt(values[32], 10));
-                timeRangeStr = `${sH}:${sM} ～ ${eH}:${eM}`;
-            }
-
-            // ★末尾のテキスト直径（[33]）を取り出す
-            let diameterVal = undefined;
-            if (values.length >= 34 && values[33] !== undefined && values[33].trim() !== "") {
-                const d = parseFloat(values[33]);
-                if (!isNaN(d) && d > 0) diameterVal = d;
-            }
 
             if (!dateValue || isNaN(rpmValue)) return; 
 
@@ -564,7 +586,10 @@
                 history[existingIndex].rpm = rpmValue;
                 history[existingIndex].speed = speedValue;
                 history[existingIndex].duration = timeValue;
-                if (weightVal !== undefined) history[existingIndex].weight = weightVal;
+                // Web側ですでに保存された体重がある場合は上書きせず保護
+                if (weightVal !== undefined && !isNaN(weightVal)) {
+                    history[existingIndex].weight = weightVal;
+                }
                 history[existingIndex].hourly = hourlyArr;
                 if (timeRangeStr) history[existingIndex].timeRange = timeRangeStr;
                 if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
@@ -574,7 +599,7 @@
                     rpm: rpmValue, 
                     speed: speedValue, 
                     duration: timeValue, 
-                    weight: weightVal, 
+                    weight: (weightVal !== undefined && !isNaN(weightVal)) ? weightVal : undefined, 
                     hourly: hourlyArr, 
                     timeRange: timeRangeStr, 
                     diameter: diameterVal 
@@ -711,7 +736,7 @@
             renderRecentData(50);
         });
 
-        // --- CSV一括ダウンロード ---
+        // --- CSV一括ダウンロード（体重＋24時間データ＋時刻＋直径を出力） ---
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
