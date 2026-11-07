@@ -18,6 +18,24 @@
         .import-box { background: #fff3e0; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; }
         .date-controls { margin: 18px auto; max-width: 650px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px; }
         
+        /* 推移グラフ下の累計データ表示バー */
+        .accumulated-box {
+            width: 100%;
+            max-width: 650px;
+            margin: -5px auto 15px auto;
+            background: #fff8e1;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            border: 1px solid #ffe082;
+            box-sizing: border-box;
+            font-size: 14px;
+            color: #444;
+        }
+        .accumulated-box b {
+            color: #b78103;
+        }
+
         .hourly-header-row {
             display: flex;
             align-items: center;
@@ -95,6 +113,11 @@
     <div class="chart-box">
         <h3>【日付ごとの推移】</h3>
         <canvas id="wheelChart"></canvas>
+    </div>
+
+    <!-- 【日付ごとの推移】グラフ下の累計表示エリア -->
+    <div class="accumulated-box">
+        <b>【本体累計記録】</b> 累計回転数: <span id="displayAccumulatedRpm" style="font-weight: bold; color: #d32f2f;">-- 回</span>
     </div>
 
     <!-- 日付操作コントロール（グラフ間に配置） -->
@@ -343,6 +366,9 @@
                 clearStatsAndHourly("--");
                 document.getElementById('dateFilter').value = "";
             }
+
+            // 履歴全体から最新の累計回転数と直径を取り出して更新
+            updateLatestAccumulatedDisplay(history);
         }
 
         function renderDataAroundDate(targetDateStr, limit = 50) {
@@ -377,6 +403,38 @@
             } else {
                 clearStatsAndHourly(normalizedTarget + " (データなし)");
             }
+
+            updateLatestAccumulatedDisplay(history);
+        }
+
+        // 推移グラフ下の累計回転数・距離の更新関数
+        function updateLatestAccumulatedDisplay(history) {
+            let latestAccRpm = undefined;
+            let latestDiameter = undefined;
+
+            // 最新の有効な累計値・直径を逆順で検索
+            for (let i = history.length - 1; i >= 0; i--) {
+                if (latestAccRpm === undefined && history[i].accumulatedRpm !== undefined && history[i].accumulatedRpm !== null) {
+                    latestAccRpm = history[i].accumulatedRpm;
+                }
+                if (latestDiameter === undefined && history[i].diameter !== undefined && history[i].diameter > 0) {
+                    latestDiameter = history[i].diameter;
+                }
+                if (latestAccRpm !== undefined && latestDiameter !== undefined) break;
+            }
+
+            const targetEl = document.getElementById('displayAccumulatedRpm');
+            if (latestAccRpm !== undefined && latestAccRpm !== null) {
+                let text = `${Number(latestAccRpm).toLocaleString()} 回`;
+                if (latestDiameter && latestDiameter > 0) {
+                    const distMeter = Math.floor(latestAccRpm * Math.PI * (latestDiameter / 100));
+                    const distKm = (distMeter / 1000).toFixed(2);
+                    text += `（${distMeter.toLocaleString()} m / ${distKm} km）`;
+                }
+                targetEl.textContent = text;
+            } else {
+                targetEl.textContent = "-- 回";
+            }
         }
 
         function updateChartWithData(dataList) {
@@ -404,7 +462,7 @@
             document.getElementById('totalDuration').textContent = record.duration || 0;
             document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
 
-            // 総回転数と距離（m）
+            // 当日総回転数と距離（m）
             const rpm = record.rpm || 0;
             let rpmText = `${rpm.toLocaleString()} 回`;
             if (record.diameter && record.diameter > 0) {
@@ -519,7 +577,7 @@
             }
         }
 
-        // --- データ登録処理（Bluetooth体重なし・CSVインポート体重ありの自動判別） ---
+        // --- データ登録処理（末尾の時刻・直径・累計回転数を自動判別） ---
         function processCSV(csvLine) {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
@@ -531,11 +589,38 @@
 
             let timeRangeStr = "";
             let diameterVal = undefined;
+            let accumulatedRpmVal = undefined;
             let hourlyArr = [];
             let weightVal = undefined;
 
-            // 末尾5要素が「開始時, 開始分, 終了時, 終了分, 直径」か判定
-            if (values.length >= 9) {
+            // パターンA: 末尾6要素が [開始時, 開始分, 終了時, 終了分, 直径, 累計回転数]
+            if (values.length >= 10) {
+                const last6 = values.slice(-6);
+                const sH = parseInt(last6[0], 10);
+                const sM = parseInt(last6[1], 10);
+                const eH = parseInt(last6[2], 10);
+                const eM = parseInt(last6[3], 10);
+                const d  = parseFloat(last6[4]);
+                const accRpm = parseInt(last6[5], 10);
+
+                if (!isNaN(sH) && sH < 24 && !isNaN(sM) && sM < 60 &&
+                    !isNaN(eH) && eH < 24 && !isNaN(eM) && eM < 60) {
+                    timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
+                    if (!isNaN(d) && d > 0) diameterVal = d;
+                    if (!isNaN(accRpm) && accRpm >= 0) accumulatedRpmVal = accRpm;
+
+                    const bodyCols = values.slice(4, values.length - 6);
+                    if (bodyCols.length >= 25) {
+                        if (bodyCols[0] !== "") weightVal = parseFloat(bodyCols[0]);
+                        for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
+                    } else {
+                        for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
+                    }
+                }
+            }
+
+            // パターンB: 従来の末尾5要素 [開始時, 開始分, 終了時, 終了分, 直径]
+            if (!timeRangeStr && values.length >= 9) {
                 const last5 = values.slice(-5);
                 const sH = parseInt(last5[0], 10);
                 const sM = parseInt(last5[1], 10);
@@ -548,25 +633,17 @@
                     timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
                     if (!isNaN(d) && d > 0) diameterVal = d;
 
-                    // 末尾5要素を除いた残りの配列
                     const bodyCols = values.slice(4, values.length - 5);
-
                     if (bodyCols.length >= 25) {
-                        // 体重あり（CSV保存・インポート時）: [0]が体重、[1〜24]が24時間データ
                         if (bodyCols[0] !== "") weightVal = parseFloat(bodyCols[0]);
-                        for (let h = 1; h <= 24; h++) {
-                            hourlyArr.push(parseFloat(bodyCols[h]) || 0);
-                        }
+                        for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
                     } else {
-                        // 体重なし（Bluetooth送信時: 計24個の24時間データが直接並ぶ）
-                        for (let h = 0; h < Math.min(bodyCols.length, 24); h++) {
-                            hourlyArr.push(parseFloat(bodyCols[h]) || 0);
-                        }
+                        for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
                     }
                 }
             }
 
-            // 従来の形式（末尾時刻・直径なし）のフォールバック処理
+            // フォールバック（末尾追加情報なし）
             if (hourlyArr.length === 0) {
                 if (values[4] !== "" && values[4] !== undefined) {
                     weightVal = parseFloat(values[4]);
@@ -586,13 +663,13 @@
                 history[existingIndex].rpm = rpmValue;
                 history[existingIndex].speed = speedValue;
                 history[existingIndex].duration = timeValue;
-                // Web側ですでに保存された体重がある場合は上書きせず保護
                 if (weightVal !== undefined && !isNaN(weightVal)) {
                     history[existingIndex].weight = weightVal;
                 }
                 history[existingIndex].hourly = hourlyArr;
                 if (timeRangeStr) history[existingIndex].timeRange = timeRangeStr;
                 if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
+                if (accumulatedRpmVal !== undefined) history[existingIndex].accumulatedRpm = accumulatedRpmVal;
             } else {
                 history.push({ 
                     time: dateValue, 
@@ -602,7 +679,8 @@
                     weight: (weightVal !== undefined && !isNaN(weightVal)) ? weightVal : undefined, 
                     hourly: hourlyArr, 
                     timeRange: timeRangeStr, 
-                    diameter: diameterVal 
+                    diameter: diameterVal,
+                    accumulatedRpm: accumulatedRpmVal
                 });
                 if (history.length > 10000) history.shift();
             }
@@ -736,14 +814,14 @@
             renderRecentData(50);
         });
 
-        // --- CSV一括ダウンロード（体重＋24時間データ＋時刻＋直径を出力） ---
+        // --- CSV一括ダウンロード（累計回転数も出力） ---
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
 
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
-            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分,直径(cm)\r\n";
+            let csvContent = "日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
             history.forEach(item => {
                 const w = item.weight !== undefined ? item.weight : "";
                 let hourlyStr = "";
@@ -766,7 +844,8 @@
                 }
 
                 const diameterStr = item.diameter !== undefined ? item.diameter : "";
-                csvContent += `${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr}\r\n`;
+                const accRpmStr = item.accumulatedRpm !== undefined ? item.accumulatedRpm : "";
+                csvContent += `${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr}\r\n`;
             });
 
             const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
