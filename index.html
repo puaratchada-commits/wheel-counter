@@ -66,6 +66,14 @@
         }
 
         h3 { margin: 10px 0 5px 0; color: #1976d2; }
+
+        /* CSVモーダル（ポップアップ）用スタイル */
+        #csvModal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); }
+        .modal-content { background-color: #fff; margin: 10% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); text-align: left; }
+        #csvTextArea { width: 100%; height: 250px; font-size: 12px; font-family: monospace; white-space: pre; overflow: auto; border: 1px solid #ccc; padding: 8px; box-sizing: border-box; background: #f5f5f5; margin-bottom: 15px; }
+        .modal-btns { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+        .modal-btns button { flex: 1; font-size: 14px; padding: 12px; margin: 0; }
+        .close-btn-full { width: 100%; background-color: #f5f5f5; border: 1px solid #ccc; padding: 10px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -105,7 +113,7 @@
             <option value="1">平均速度 (cm/s)</option>
             <option value="3">体重 (g)</option>
         </select>
-        <!-- 一括保存ボタンの追加 -->
+        <!-- 保存ボタン -->
         <button id="downloadCsvBtn" style="background-color: #e8f5e9; border: 1px solid #4caf50;">選択個体CSV保存</button>
         <button id="downloadAllCsvBtn" style="background-color: #e3f2fd; border: 1px solid #2196f3;">全個体CSV保存</button>
         <button id="clearBtn" style="color: red;">データ全消去</button>
@@ -153,6 +161,23 @@
         総運動時間: <span id="totalDuration">--</span> 分<br>
         平均速度: <span id="avgSpeed">--</span> cm/s<br>
         総回転数: <span id="totalRpm">-- 回</span>
+    </div>
+
+    <!-- CSV出力用 モーダル（ポップアップ） -->
+    <div id="csvModal">
+        <div class="modal-content">
+            <h3 style="margin-top:0; color:#1976d2;">CSVデータ出力</h3>
+            <p style="font-size:13px; color:#555; margin-bottom:10px;">
+                iPhoneの特殊ブラウザでは「テキストをコピー」を押してメモ帳やメールに貼り付けてください。<br>
+                PCやAndroidの場合は「ファイルとして保存」が可能です。
+            </p>
+            <textarea id="csvTextArea" readonly></textarea>
+            <div class="modal-btns">
+                <button id="downloadFileBtn" style="background-color: #2196f3; color: white;">ファイルとして保存</button>
+                <button id="copyCsvBtn" style="background-color: #4caf50; color: white; font-weight: bold;">テキストをコピー</button>
+            </div>
+            <button id="closeModalBtn" class="close-btn-full">閉じる</button>
+        </div>
     </div>
 
     <script>
@@ -493,7 +518,6 @@
             renderRecentData(50);
         });
 
-        // ＋ 新規個体を手動追加
         document.getElementById('addDeviceBtn').addEventListener('click', () => {
             const keyName = prompt("新しく登録するデバイス名（Bluetooth名 または 識別キー）を入力してください\n※例: GIGI-02");
             if (keyName && keyName.trim() !== "") {
@@ -513,7 +537,6 @@
             }
         });
 
-        // 個体名（表示用カスタム名）を変更
         document.getElementById('renameBtn').addEventListener('click', () => {
             const currentKey = getCurrentDeviceKey();
             const map = getDeviceNamesMap();
@@ -531,14 +554,13 @@
             }
         });
 
-        // --- Bluetooth 接続 ---
         const connectBtn = document.getElementById('connectBtn');
         let receiveBuffer = "";
 
         connectBtn.addEventListener('click', async () => {
             try {
                 const device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true,
+                    filters: [{ services: [0xFFE0] }],
                     optionalServices: [0xFFE0]
                 });
 
@@ -599,7 +621,6 @@
             }
         }
 
-        // --- データ登録処理 ---
         function processCSV(csvLine, targetDeviceKey = null, isBulkImport = false) {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
@@ -633,7 +654,7 @@
                     const bodyCols = values.slice(4, values.length - 6);
                     if (bodyCols.length >= 25) {
                         const w = parseFloat(bodyCols[0]);
-                        if (!isNaN(w) && w > 0) weightVal = w; // 0gは無視
+                        if (!isNaN(w) && w > 0) weightVal = w;
                         for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
                     } else {
                         for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
@@ -657,7 +678,7 @@
                     const bodyCols = values.slice(4, values.length - 5);
                     if (bodyCols.length >= 25) {
                         const w = parseFloat(bodyCols[0]);
-                        if (!isNaN(w) && w > 0) weightVal = w; // 0gは無視
+                        if (!isNaN(w) && w > 0) weightVal = w;
                         for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
                     } else {
                         for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
@@ -667,7 +688,7 @@
 
             if (hourlyArr.length === 0) {
                 const w = parseFloat(values[4]);
-                if (!isNaN(w) && w > 0) weightVal = w; // 0gは無視
+                if (!isNaN(w) && w > 0) weightVal = w;
                 for (let i = 5; i < Math.min(values.length, 29); i++) {
                     hourlyArr.push(parseFloat(values[i]) || 0);
                 }
@@ -689,15 +710,7 @@
                     const map = getDeviceNamesMap();
                     const dName = map[currentTargetKey] || currentTargetKey;
 
-                    const msg = `【同日データの上書き確認】\n` +
-                                `個体: [${dName}]\n` +
-                                `日付: ${dateValue} のデータは既に存在します。\n\n` +
-                                `・既存の回転数: ${Number(oldRpm).toLocaleString()} 回\n` +
-                                `・受信した回転数: ${Number(newRpm).toLocaleString()} 回\n\n` +
-                                `新しいデータで置き換えますか？\n` +
-                                `（「キャンセル」を押すとこの受信データは破棄されます）`;
-
-                    const confirmReplace = confirm(msg);
+                    const confirmReplace = confirm(`【同日データの上書き確認】\n個体: [${dName}]\n日付: ${dateValue} のデータは既に存在します。\n\n・既存の回転数: ${Number(oldRpm).toLocaleString()} 回\n・受信した回転数: ${Number(newRpm).toLocaleString()} 回\n\n新しいデータで置き換えますか？\n（「キャンセル」を押すとこの受信データは破棄されます）`);
                     if (!confirmReplace) {
                         return; 
                     }
@@ -737,7 +750,6 @@
             }
         }
 
-        // --- 体重の手動保存 ---
         document.getElementById('saveWeightBtn').addEventListener('click', () => {
             const weightVal = parseFloat(document.getElementById('weightInput').value);
             if (isNaN(weightVal)) {
@@ -765,7 +777,6 @@
             showDateDataAndAround(targetDateStr);
         });
 
-        // --- CSVインポート処理 ---
         document.getElementById('importCsvFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -777,7 +788,6 @@
                 
                 if (lines.length === 0) return;
                 
-                // ヘッダー確認
                 const headerCols = lines[0].split(',');
                 const hasBleAndName = headerCols.length > 1 && headerCols[0].includes("Bluetooth") && headerCols[1].includes("個体名");
                 const hasOnlyDeviceCol = !hasBleAndName && (headerCols[0].includes("個体名") || headerCols[0].includes("デバイス"));
@@ -835,7 +845,6 @@
             reader.readAsText(file, 'UTF-8');
         });
 
-        // --- 棒グラフ項目切替 ---
         document.getElementById('barTargetSelect').addEventListener('change', (e) => {
             const selectedIndex = parseInt(e.target.value);
             wheelChart.data.datasets.forEach((ds, index) => {
@@ -857,7 +866,6 @@
             wheelChart.update();
         });
 
-        // --- 日付操作・ナビゲーション ---
         const dateFilter = document.getElementById('dateFilter');
 
         function showDateDataAndAround(targetDateStr) {
@@ -900,20 +908,54 @@
 
         document.getElementById('prevDayBtn').addEventListener('click', () => shiftDate(-1));
         document.getElementById('nextDayBtn').addEventListener('click', () => shiftDate(1));
+        document.getElementById('resetBtn').addEventListener('click', () => { renderRecentData(50); });
 
-        document.getElementById('resetBtn').addEventListener('click', () => {
-            renderRecentData(50);
+        // --- CSVモーダル（ポップアップ）関連処理 ---
+        let currentCsvString = "";
+        let currentCsvFilename = "data.csv";
+
+        function showCsvModal(csvText, filename) {
+            currentCsvString = csvText;
+            currentCsvFilename = filename;
+            document.getElementById('csvTextArea').value = csvText;
+            document.getElementById('csvModal').style.display = 'block';
+        }
+
+        document.getElementById('closeModalBtn').addEventListener('click', () => {
+            document.getElementById('csvModal').style.display = 'none';
+        });
+
+        document.getElementById('copyCsvBtn').addEventListener('click', () => {
+            const textArea = document.getElementById('csvTextArea');
+            textArea.select();
+            textArea.setSelectionRange(0, 999999); // モバイル向けの選択範囲拡張
+            try {
+                document.execCommand('copy');
+                alert("クリップボードにコピーしました！\nメールやメモ帳アプリに「ペースト（貼り付け）」して保存・送信してください。");
+            } catch (err) {
+                alert("自動コピーに失敗しました。お手数ですが、手動でテキストを全選択してコピーしてください。");
+            }
+        });
+
+        document.getElementById('downloadFileBtn').addEventListener('click', () => {
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, currentCsvString], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = currentCsvFilename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
         });
 
         // --- 選択個体CSVエクスポート ---
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
-
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
             let csvContent = "Bluetooth名,個体名(表示名),日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
-            
             const currentDevKey = getCurrentDeviceKey();
             const map = getDeviceNamesMap();
             const customName = map[currentDevKey] || currentDevKey;
@@ -922,67 +964,39 @@
                 const w = item.weight !== undefined && item.weight !== null ? item.weight : "";
                 let hourlyStr = "";
                 let arr = item.hourly || new Array(24).fill(0);
-                for (let h = 0; h < 24; h++) {
-                    hourlyStr += `,${arr[h] || 0}`;
-                }
+                for (let h = 0; h < 24; h++) { hourlyStr += `,${arr[h] || 0}`; }
 
                 let timeCols = ["", "", "", ""];
                 if (item.timeRange && item.timeRange.includes("～")) {
                     const match = item.timeRange.match(/(\d{1,2}):(\d{1,2})\s*～\s*(\d{1,2}):(\d{1,2})/);
-                    if (match) {
-                        timeCols = [
-                            parseInt(match[1], 10),
-                            parseInt(match[2], 10),
-                            parseInt(match[3], 10),
-                            parseInt(match[4], 10)
-                        ];
-                    }
+                    if (match) { timeCols = [parseInt(match[1], 10), parseInt(match[2], 10), parseInt(match[3], 10), parseInt(match[4], 10)]; }
                 }
 
                 const diameterStr = item.diameter !== undefined && item.diameter !== null ? item.diameter : "";
                 const accRpmStr = item.accumulatedRpm !== undefined && item.accumulatedRpm !== null ? item.accumulatedRpm : "";
-                
                 csvContent += `${currentDevKey},${customName},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr}\r\n`;
             });
 
-            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
             const today = formatDateString(new Date());
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
             const safeName = customName.replace(/[\\/:*?"<>|]/g, "_");
-            link.download = `${safeName}_wheel_data_${today}.csv`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(link.href);
+            const filename = `${safeName}_wheel_data_${today}.csv`;
+            
+            showCsvModal(csvContent, filename);
         });
 
-        // --- ★全個体CSV一括エクスポート（ゴーストデータ排除版） ---
+        // --- 全個体CSV一括エクスポート ---
         document.getElementById('downloadAllCsvBtn').addEventListener('click', () => {
-            // プルダウンに表示されている「現在有効な個体」だけを抽出
             const validOptions = Array.from(document.getElementById('deviceSelect').options).map(opt => opt.value);
             const map = getDeviceNamesMap();
             let allHistory = [];
 
-            // 有効な個体のデータのみを1つの配列に収集
             validOptions.forEach(devKey => {
                 const history = JSON.parse(localStorage.getItem(`wheelData_${devKey}`)) || [];
-                history.forEach(item => {
-                    allHistory.push({
-                        ...item,
-                        devKey: devKey,
-                        customName: map[devKey] || devKey
-                    });
-                });
+                history.forEach(item => { allHistory.push({ ...item, devKey: devKey, customName: map[devKey] || devKey }); });
             });
 
-            if (allHistory.length === 0) {
-                alert("保存するデータがありません。");
-                return;
-            }
+            if (allHistory.length === 0) { alert("保存するデータがありません。"); return; }
 
-            // 日付順、次に個体名順でソート
             allHistory.sort((a, b) => {
                 const dateA = new Date(a.time);
                 const dateB = new Date(b.time);
@@ -996,39 +1010,23 @@
                 const w = item.weight !== undefined && item.weight !== null ? item.weight : "";
                 let hourlyStr = "";
                 let arr = item.hourly || new Array(24).fill(0);
-                for (let h = 0; h < 24; h++) {
-                    hourlyStr += `,${arr[h] || 0}`;
-                }
+                for (let h = 0; h < 24; h++) { hourlyStr += `,${arr[h] || 0}`; }
 
                 let timeCols = ["", "", "", ""];
                 if (item.timeRange && item.timeRange.includes("～")) {
                     const match = item.timeRange.match(/(\d{1,2}):(\d{1,2})\s*～\s*(\d{1,2}):(\d{1,2})/);
-                    if (match) {
-                        timeCols = [
-                            parseInt(match[1], 10),
-                            parseInt(match[2], 10),
-                            parseInt(match[3], 10),
-                            parseInt(match[4], 10)
-                        ];
-                    }
+                    if (match) { timeCols = [parseInt(match[1], 10), parseInt(match[2], 10), parseInt(match[3], 10), parseInt(match[4], 10)]; }
                 }
 
                 const diameterStr = item.diameter !== undefined && item.diameter !== null ? item.diameter : "";
                 const accRpmStr = item.accumulatedRpm !== undefined && item.accumulatedRpm !== null ? item.accumulatedRpm : "";
-                
                 csvContent += `${item.devKey},${item.customName},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr}\r\n`;
             });
 
-            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
             const today = formatDateString(new Date());
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `all_devices_wheel_data_${today}.csv`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(link.href);
+            const filename = `all_devices_wheel_data_${today}.csv`;
+
+            showCsvModal(csvContent, filename);
         });
 
         // --- データ全消去 ---
