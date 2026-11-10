@@ -79,14 +79,14 @@
             <!-- 動的に生成されます -->
         </select><br>
         <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold; margin-top: 6px;">Bluetooth 接続</button>
-        <button id="addDeviceBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">＋ 新規個体を追加</button>
-        <button id="renameBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">選択中の個体名を変更</button>
+        <button id="addDeviceBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">＋ 新規個体を手動追加</button>
+        <button id="renameBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">個体名（表示名）を変更</button>
     </div><br>
 
     <!-- 体重手動入力コントロール -->
     <div class="weight-box">
         <label for="weightInput">今日の体重 (g): </label>
-        <input type="number" id="weightInput" step="0.1" placeholder="例: 180" style="width: 90px;">
+        <input type="number" id="weightInput" step="0.1" placeholder="例: 35.2" style="width: 90px;">
         <button id="saveWeightBtn">体重を保存</button>
     </div>
 
@@ -189,9 +189,13 @@
             return `${yyyy}-${mm}-${dd}`;
         }
 
+        function getDeviceNamesMap() {
+            return JSON.parse(localStorage.getItem('wheelDeviceNamesMap')) || {};
+        }
+
+        // 保存されている全データキーを元にリストを生成（重複排除）
         function getDeviceList() {
-            let list = JSON.parse(localStorage.getItem('wheelRegisteredDevices')) || [];
-            
+            let list = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const k = localStorage.key(i);
                 if (k && k.startsWith('wheelData_')) {
@@ -201,18 +205,14 @@
                     }
                 }
             }
-
             if (list.length === 0) {
                 list = ['GIGI-01'];
+                localStorage.setItem('wheelData_GIGI-01', JSON.stringify([]));
             }
-            localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
             return list;
         }
 
-        function getDeviceNamesMap() {
-            return JSON.parse(localStorage.getItem('wheelDeviceNamesMap')) || {};
-        }
-
+        // ドロップダウン更新（個体名とBluetooth名を併記）
         function updateDeviceSelectOptions(targetKey = null) {
             const deviceSelect = document.getElementById('deviceSelect');
             if (!deviceSelect) return;
@@ -225,8 +225,9 @@
             list.sort().forEach(key => {
                 const customName = map[key] || key;
                 const opt = document.createElement('option');
-                opt.value = key;
+                opt.value = key; // valueはBluetooth本来のキー
                 
+                // カスタム名が設定されていれば併記、なければそのまま
                 if (customName !== key) {
                     opt.textContent = `${customName} (BLE: ${key})`;
                 } else {
@@ -271,7 +272,6 @@
                     { label: '回転数 (回)', type: 'line', data: [], borderColor: metricStyles[0].borderColor, backgroundColor: 'transparent', yAxisID: 'y', tension: 0.1, order: 1, hidden: false },
                     { label: '平均速度 (cm/s)', type: 'line', data: [], borderColor: metricStyles[1].borderColor, backgroundColor: 'transparent', yAxisID: 'y2', tension: 0.1, order: 1, hidden: false },
                     { label: '運動時間 (分)', type: 'bar', data: [], borderColor: metricStyles[2].borderColor, backgroundColor: metricStyles[2].bgColor, borderWidth: 1, yAxisID: 'y2', order: 2, hidden: false },
-                    // ★ spanGaps: true で欠損日を跨いで線を繋ぎ、pointRadius: 4 で点を強調表示
                     { label: '体重 (g)', type: 'line', data: [], borderColor: metricStyles[3].borderColor, backgroundColor: 'transparent', yAxisID: 'y3', tension: 0.1, order: 1, hidden: false, spanGaps: true, pointRadius: 4, pointHoverRadius: 6 }
                 ]
             },
@@ -289,7 +289,6 @@
                 scales: {
                     y: { type: 'linear', display: true, position: 'left', beginAtZero: true },
                     y2: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, beginAtZero: true },
-                    // 体重の軸は非表示のままでも、0基準にして線が下に行きすぎないようにする
                     y3: { type: 'linear', display: false, position: 'right', suggestedMin: 0 }
                 }
             }
@@ -329,6 +328,7 @@
             const currentKey = getCurrentDeviceKey();
             localStorage.setItem('activeSelectedDevice', currentKey);
             
+            // 確定データの対象個体表示にも併記を反映
             const map = getDeviceNamesMap();
             const customName = map[currentKey] || currentKey;
             const displayName = customName !== currentKey ? `${customName} (BLE: ${currentKey})` : currentKey;
@@ -635,7 +635,7 @@
                     const bodyCols = values.slice(4, values.length - 6);
                     if (bodyCols.length >= 25) {
                         const w = parseFloat(bodyCols[0]);
-                        if (!isNaN(w) && w > 0) weightVal = w; // 0gは無効として無視
+                        if (!isNaN(w) && w > 0) weightVal = w; 
                         for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
                     } else {
                         for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
@@ -659,7 +659,7 @@
                     const bodyCols = values.slice(4, values.length - 5);
                     if (bodyCols.length >= 25) {
                         const w = parseFloat(bodyCols[0]);
-                        if (!isNaN(w) && w > 0) weightVal = w; // 0gは無効として無視
+                        if (!isNaN(w) && w > 0) weightVal = w;
                         for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
                     } else {
                         for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
@@ -669,7 +669,7 @@
 
             if (hourlyArr.length === 0) {
                 const w = parseFloat(values[4]);
-                if (!isNaN(w) && w > 0) weightVal = w; // 0gは無効として無視
+                if (!isNaN(w) && w > 0) weightVal = w; 
                 for (let i = 5; i < Math.min(values.length, 29); i++) {
                     hourlyArr.push(parseFloat(values[i]) || 0);
                 }
@@ -703,7 +703,6 @@
                 history[existingIndex].rpm = rpmValue;
                 history[existingIndex].speed = speedValue;
                 history[existingIndex].duration = timeValue;
-                // 手動入力された体重が既にある場合、Bluetoothからの欠損データで上書きされないよう保護
                 if (weightVal !== undefined && !isNaN(weightVal)) {
                     history[existingIndex].weight = weightVal;
                 }
@@ -903,18 +902,50 @@
             URL.revokeObjectURL(link.href);
         });
 
-        // --- データ全消去 ---
+        // --- データ全消去（ゴーストデータ完全対応版） ---
         document.getElementById('clearBtn').addEventListener('click', () => {
             const currentName = getCurrentDeviceKey();
             if (confirm(`本当に個体 [${currentName}] のすべてのデータを消去しますか？\n（他の個体のデータは消去されません）`)) {
-                localStorage.removeItem(getStorageKey());
                 
-                let list = getDeviceList().filter(n => n !== currentName);
+                // 見えない空白を含むゴーストキーもすべて検索して根こそぎ削除
+                let keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k && k.startsWith('wheelData_')) {
+                        // 文字の前後にある見えない空白を取り除いてから一致するか判定
+                        if (k.replace('wheelData_', '').trim() === currentName) {
+                            keysToRemove.push(k);
+                        }
+                    }
+                }
+                keysToRemove.forEach(k => localStorage.removeItem(k));
+                
+                // カスタム名（表示名）の紐づけ設定からも確実に削除
+                const map = getDeviceNamesMap();
+                let mapChanged = false;
+                Object.keys(map).forEach(k => {
+                    // キー側と名前側の両方を見えない空白を取り除いてチェック
+                    if (k.trim() === currentName || map[k].trim() === currentName) {
+                        delete map[k];
+                        mapChanged = true;
+                    }
+                });
+                if (mapChanged) {
+                    localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
+                }
+
+                // デバイス一覧からも削除
+                let list = [];
+                const savedList = JSON.parse(localStorage.getItem('wheelRegisteredDevices')) || [];
+                savedList.forEach(n => {
+                    if (n.trim() !== currentName) list.push(n);
+                });
                 if (list.length === 0) list = ['GIGI-01'];
-                
+                localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
+
                 updateDeviceSelectOptions(list[0]);
                 renderRecentData(50);
-                alert(`個体 [${currentName}] のデータを消去しました。`);
+                alert(`個体 [${currentName}] のデータを完全に消去しました。`);
             }
         });
     </script>
