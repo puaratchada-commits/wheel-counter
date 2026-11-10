@@ -15,7 +15,7 @@
         #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; border: 1px solid #e0e0e0; line-height: 1.8; }
         .device-box { background: #e3f2fd; padding: 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
         .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
-        .import-box { background: #fff3e0; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; }
+        .import-box { background: #fff3e0; padding: 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; text-align: center; }
         .date-controls { margin: 18px auto; max-width: 650px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px; }
         
         .accumulated-box {
@@ -31,9 +31,7 @@
             font-size: 14px;
             color: #444;
         }
-        .accumulated-box b {
-            color: #b78103;
-        }
+        .accumulated-box b { color: #b78103; }
 
         .hourly-header-row {
             display: flex;
@@ -43,36 +41,17 @@
             margin-bottom: 8px;
             font-size: 13px;
         }
-        .legend-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            color: #666;
-        }
-        .legend-color-box {
-            width: 32px;
-            height: 12px;
-            background-color: rgba(54, 162, 235, 0.5);
-            border: 1px solid rgb(54, 162, 235);
-        }
-        .time-range-badge {
-            font-size: 13px;
-            color: #2e7d32;
-            font-weight: bold;
-            background: #e8f5e9;
-            padding: 3px 8px;
-            border-radius: 4px;
-            border: 1px solid #c8e6c9;
-        }
-
+        .legend-indicator { display: inline-flex; align-items: center; gap: 6px; color: #666; }
+        .legend-color-box { width: 32px; height: 12px; background-color: rgba(54, 162, 235, 0.5); border: 1px solid rgb(54, 162, 235); }
+        .time-range-badge { font-size: 13px; color: #2e7d32; font-weight: bold; background: #e8f5e9; padding: 3px 8px; border-radius: 4px; border: 1px solid #c8e6c9; }
         h3 { margin: 10px 0 5px 0; color: #1976d2; }
 
-        /* CSVモーダル（ポップアップ）用スタイル */
-        #csvModal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); }
+        /* モーダル（ポップアップ）共通スタイル */
+        .modal-overlay { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); }
         .modal-content { background-color: #fff; margin: 10% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); text-align: left; }
-        #csvTextArea { width: 100%; height: 250px; font-size: 12px; font-family: monospace; white-space: pre; overflow: auto; border: 1px solid #ccc; padding: 8px; box-sizing: border-box; background: #f5f5f5; margin-bottom: 15px; }
+        .modal-textarea { width: 100%; height: 250px; font-size: 12px; font-family: monospace; white-space: pre; overflow: auto; border: 1px solid #ccc; padding: 8px; box-sizing: border-box; background: #f5f5f5; margin-bottom: 15px; }
         .modal-btns { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-        .modal-btns button { flex: 1; font-size: 14px; padding: 12px; margin: 0; }
+        .modal-btns button { flex: 1; font-size: 14px; padding: 12px; margin: 0; font-weight: bold; }
         .close-btn-full { width: 100%; background-color: #f5f5f5; border: 1px solid #ccc; padding: 10px; font-size: 14px; }
     </style>
 </head>
@@ -98,10 +77,15 @@
         <button id="saveWeightBtn">体重を保存</button>
     </div>
 
-    <!-- CSVインポートコントロール -->
+    <!-- CSVインポートコントロール（テキストペースト機能追加） -->
     <div class="import-box">
-        <label for="importCsvFile" style="font-size: 14px; cursor: pointer;">CSVインポート: </label>
-        <input type="file" id="importCsvFile" accept=".csv" style="font-size: 14px;">
+        <div style="margin-bottom: 8px;">
+            <label style="font-size: 14px; font-weight: bold;">【データ取り込み】</label>
+        </div>
+        <label for="importCsvFile" style="font-size: 13px; cursor: pointer;">ファイル選択: </label>
+        <input type="file" id="importCsvFile" accept=".csv" style="font-size: 13px; max-width: 200px;">
+        <br>
+        <button id="importTextBtn" style="font-size: 13px; padding: 6px 14px; margin-top: 8px; background-color: #ffe0b2; color: #e65100; border: 1px solid #ffcc80; font-weight: bold;">＋ テキストを貼り付けてインポート</button>
     </div>
 
     <!-- 棒グラフ対象の選択 & データ管理ボタン -->
@@ -163,20 +147,35 @@
         総回転数: <span id="totalRpm">-- 回</span>
     </div>
 
-    <!-- CSV出力用 モーダル（ポップアップ） -->
-    <div id="csvModal">
+    <!-- CSV出力用 モーダル -->
+    <div id="csvModal" class="modal-overlay">
         <div class="modal-content">
             <h3 style="margin-top:0; color:#1976d2;">CSVデータ出力</h3>
             <p style="font-size:13px; color:#555; margin-bottom:10px;">
-                iPhoneの特殊ブラウザでは「テキストをコピー」を押してメモ帳やメールに貼り付けてください。<br>
+                iPhone等の特殊ブラウザでは「テキストをコピー」を押してメモ帳やメールに貼り付けてください。<br>
                 PCやAndroidの場合は「ファイルとして保存」が可能です。
             </p>
-            <textarea id="csvTextArea" readonly></textarea>
+            <textarea id="csvTextArea" class="modal-textarea" readonly></textarea>
             <div class="modal-btns">
                 <button id="downloadFileBtn" style="background-color: #2196f3; color: white;">ファイルとして保存</button>
-                <button id="copyCsvBtn" style="background-color: #4caf50; color: white; font-weight: bold;">テキストをコピー</button>
+                <button id="copyCsvBtn" style="background-color: #4caf50; color: white;">テキストをコピー</button>
             </div>
             <button id="closeModalBtn" class="close-btn-full">閉じる</button>
+        </div>
+    </div>
+
+    <!-- CSVテキスト入力用 モーダル -->
+    <div id="importModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 style="margin-top:0; color:#e65100;">CSVテキストからインポート</h3>
+            <p style="font-size:13px; color:#555; margin-bottom:10px;">
+                コピーしたCSVの文字データを下の枠に「ペースト（貼り付け）」して、インポートボタンを押してください。（複数個体も自動振り分けされます）
+            </p>
+            <textarea id="importTextArea" class="modal-textarea" placeholder="ここにCSVデータを貼り付けます..." style="background: #fff;"></textarea>
+            <div class="modal-btns">
+                <button id="execImportTextBtn" style="background-color: #ff9800; color: white; width: 100%;">インポート実行</button>
+            </div>
+            <button id="closeImportModalBtn" class="close-btn-full">キャンセル</button>
         </div>
     </div>
 
@@ -251,7 +250,6 @@
                 const customName = map[key] || key;
                 const opt = document.createElement('option');
                 opt.value = key; 
-                
                 if (customName !== key) {
                     opt.textContent = `${customName} (BLE: ${key})`;
                 } else {
@@ -305,9 +303,7 @@
                     if (elements && elements.length > 0) {
                         const index = elements[0].index;
                         const clickedDate = wheelChart.data.labels[index];
-                        if (clickedDate) {
-                            showDateDataAndAround(clickedDate);
-                        }
+                        if (clickedDate) { showDateDataAndAround(clickedDate); }
                     }
                 },
                 scales: {
@@ -318,11 +314,7 @@
             }
         });
 
-        const hourlyLabels = [
-            "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", 
-            "20:00", "21:00", "22:00", "23:00", "0:00", "1:00", "2:00", "3:00", 
-            "4:00", "5:00", "6:00", "7:00", "8:00", "9:00", "10:00", "11:00"
-        ];
+        const hourlyLabels = ["12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "0:00", "1:00", "2:00", "3:00", "4:00", "5:00", "6:00", "7:00", "8:00", "9:00", "10:00", "11:00"];
 
         const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
         const hourlyChart = new Chart(ctxHourly, {
@@ -339,12 +331,8 @@
             },
             options: {
                 responsive: true,
-                plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    y: { beginAtZero: true }
-                }
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
             }
         });
 
@@ -371,7 +359,6 @@
                 clearStatsAndHourly("--");
                 document.getElementById('dateFilter').value = "";
             }
-
             updateLatestAccumulatedDisplay(history);
         }
 
@@ -395,9 +382,7 @@
                 let half = Math.floor(limit / 2);
                 let start = Math.max(0, targetIndex - half);
                 let end = Math.min(history.length, start + limit);
-                if (end - start < limit && start > 0) {
-                    start = Math.max(0, end - limit);
-                }
+                if (end - start < limit && start > 0) { start = Math.max(0, end - limit); }
                 displayData = history.slice(start, end);
             } else {
                 displayData = history.slice(-limit);
@@ -411,14 +396,12 @@
             } else {
                 clearStatsAndHourly(normalizedTarget + " (データなし)");
             }
-
             updateLatestAccumulatedDisplay(history);
         }
 
         function updateLatestAccumulatedDisplay(history) {
             let latestAccRpm = undefined;
             let latestDiameter = undefined;
-
             for (let i = history.length - 1; i >= 0; i--) {
                 if (latestAccRpm === undefined && history[i].accumulatedRpm !== undefined && history[i].accumulatedRpm !== null) {
                     latestAccRpm = history[i].accumulatedRpm;
@@ -506,7 +489,6 @@
             } else {
                 document.getElementById('hourlyTitle').textContent = `【24時間分布】`;
             }
-
             hourlyChart.data.datasets[0].data = new Array(24).fill(0);
             hourlyChart.update();
         }
@@ -525,7 +507,6 @@
                 let list = getDeviceList();
                 if (!list.includes(trimmedKey)) {
                     localStorage.setItem(`wheelData_${trimmedKey}`, JSON.stringify([]));
-                    
                     const customName = prompt(`デバイス [${trimmedKey}] の個体名（表示用）を入力してください:\n※例: モモ`, trimmedKey);
                     const map = getDeviceNamesMap();
                     map[trimmedKey] = (customName && customName.trim() !== "") ? customName.trim() : trimmedKey;
@@ -547,7 +528,6 @@
             if (newName && newName.trim() !== "" && newName.trim() !== currentName) {
                 map[currentKey] = newName.trim();
                 localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
-                
                 updateDeviceSelectOptions(currentKey);
                 renderRecentData(50);
                 alert(`個体名を [${newName.trim()}] に変更しました！`);
@@ -587,11 +567,8 @@
                         detectedName
                     );
 
-                    if (!chosenName || chosenName.trim() === "") {
-                        chosenName = detectedName;
-                    } else {
-                        chosenName = chosenName.trim();
-                    }
+                    if (!chosenName || chosenName.trim() === "") { chosenName = detectedName; }
+                    else { chosenName = chosenName.trim(); }
 
                     map[detectedName] = chosenName;
                     localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
@@ -614,13 +591,13 @@
             receiveBuffer += text;
             let lines = receiveBuffer.split('\n');
             receiveBuffer = lines.pop(); 
-
             for (let line of lines) {
                 line = line.trim();
                 if (line.length > 0) processCSV(line, null, false);
             }
         }
 
+        // CSVデータのパースと保存
         function processCSV(csvLine, targetDeviceKey = null, isBulkImport = false) {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
@@ -645,8 +622,7 @@
                 const d  = parseFloat(last6[4]);
                 const accRpm = parseInt(last6[5], 10);
 
-                if (!isNaN(sH) && sH < 24 && !isNaN(sM) && sM < 60 &&
-                    !isNaN(eH) && eH < 24 && !isNaN(eM) && eM < 60) {
+                if (!isNaN(sH) && sH < 24 && !isNaN(sM) && sM < 60 && !isNaN(eH) && eH < 24 && !isNaN(eM) && eM < 60) {
                     timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
                     if (!isNaN(d) && d > 0) diameterVal = d;
                     if (!isNaN(accRpm) && accRpm >= 0) accumulatedRpmVal = accRpm;
@@ -670,8 +646,7 @@
                 const eM = parseInt(last5[3], 10);
                 const d  = parseFloat(last5[4]);
 
-                if (!isNaN(sH) && sH < 24 && !isNaN(sM) && sM < 60 &&
-                    !isNaN(eH) && eH < 24 && !isNaN(eM) && eM < 60) {
+                if (!isNaN(sH) && sH < 24 && !isNaN(sM) && sM < 60 && !isNaN(eH) && eH < 24 && !isNaN(eM) && eM < 60) {
                     timeRangeStr = `${pad2(sH)}:${pad2(sM)} ～ ${pad2(eH)}:${pad2(eM)}`;
                     if (!isNaN(d) && d > 0) diameterVal = d;
 
@@ -706,37 +681,26 @@
             if (existingIndex !== -1) {
                 if (!isBulkImport) {
                     const oldRpm = history[existingIndex].rpm || 0;
-                    const newRpm = rpmValue;
                     const map = getDeviceNamesMap();
                     const dName = map[currentTargetKey] || currentTargetKey;
 
-                    const confirmReplace = confirm(`【同日データの上書き確認】\n個体: [${dName}]\n日付: ${dateValue} のデータは既に存在します。\n\n・既存の回転数: ${Number(oldRpm).toLocaleString()} 回\n・受信した回転数: ${Number(newRpm).toLocaleString()} 回\n\n新しいデータで置き換えますか？\n（「キャンセル」を押すとこの受信データは破棄されます）`);
-                    if (!confirmReplace) {
-                        return; 
-                    }
+                    const confirmReplace = confirm(`【同日データの上書き確認】\n個体: [${dName}]\n日付: ${dateValue} のデータは既に存在します。\n\n・既存の回転数: ${Number(oldRpm).toLocaleString()} 回\n・受信した回転数: ${Number(rpmValue).toLocaleString()} 回\n\n新しいデータで置き換えますか？`);
+                    if (!confirmReplace) { return; }
                 }
 
                 history[existingIndex].rpm = rpmValue;
                 history[existingIndex].speed = speedValue;
                 history[existingIndex].duration = timeValue;
-                if (weightVal !== undefined && !isNaN(weightVal)) {
-                    history[existingIndex].weight = weightVal;
-                }
+                if (weightVal !== undefined && !isNaN(weightVal)) { history[existingIndex].weight = weightVal; }
                 history[existingIndex].hourly = hourlyArr;
                 if (timeRangeStr) history[existingIndex].timeRange = timeRangeStr;
                 if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
                 if (accumulatedRpmVal !== undefined) history[existingIndex].accumulatedRpm = accumulatedRpmVal;
             } else {
                 history.push({ 
-                    time: dateValue, 
-                    rpm: rpmValue, 
-                    speed: speedValue, 
-                    duration: timeValue, 
+                    time: dateValue, rpm: rpmValue, speed: speedValue, duration: timeValue, 
                     weight: (weightVal !== undefined && !isNaN(weightVal)) ? weightVal : undefined, 
-                    hourly: hourlyArr, 
-                    timeRange: timeRangeStr, 
-                    diameter: diameterVal,
-                    accumulatedRpm: accumulatedRpmVal
+                    hourly: hourlyArr, timeRange: timeRangeStr, diameter: diameterVal, accumulatedRpm: accumulatedRpmVal
                 });
                 if (history.length > 10000) history.shift();
             }
@@ -750,162 +714,154 @@
             }
         }
 
+        // 体重の保存
         document.getElementById('saveWeightBtn').addEventListener('click', () => {
             const weightVal = parseFloat(document.getElementById('weightInput').value);
-            if (isNaN(weightVal)) {
-                alert("有効な体重の数値を入力してください。");
-                return;
-            }
-
+            if (isNaN(weightVal)) { alert("有効な体重の数値を入力してください。"); return; }
             let targetDateStr = normalizeDateStr(document.getElementById('dateFilter').value);
-            if (!targetDateStr) {
-                targetDateStr = formatDateString(new Date());
-            }
+            if (!targetDateStr) { targetDateStr = formatDateString(new Date()); }
 
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             let existingIndex = history.findIndex(item => normalizeDateStr(item.time) === targetDateStr);
-
             if (existingIndex !== -1) {
                 history[existingIndex].weight = weightVal;
             } else {
                 history.push({ time: targetDateStr, rpm: 0, speed: 0, duration: 0, weight: weightVal, hourly: new Array(24).fill(0), timeRange: "" });
             }
-
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
             localStorage.setItem(getStorageKey(), JSON.stringify(history));
             alert(`[${getCurrentDeviceKey()}] ${targetDateStr} の体重 ${weightVal}g を保存しました！`);
             showDateDataAndAround(targetDateStr);
         });
 
+        // 共通CSVインポート処理ロジック
+        function executeBulkCsvImport(text) {
+            const lines = text.split(/\r\n|\n/);
+            if (lines.length === 0) return 0;
+            
+            const headerCols = lines[0].split(',');
+            const hasBleAndName = headerCols.length > 1 && headerCols[0].includes("Bluetooth") && headerCols[1].includes("個体名");
+            const hasOnlyDeviceCol = !hasBleAndName && (headerCols[0].includes("個体名") || headerCols[0].includes("デバイス"));
+            
+            let importedCount = 0;
+            for (let i = 1; i < lines.length; i++) {
+                let line = lines[i].trim();
+                if (!line) continue;
+                
+                let targetDevice = getCurrentDeviceKey();
+                let customName = null;
+                
+                if (hasBleAndName) {
+                    const parts = line.split(',');
+                    if (parts.length > 2) {
+                        targetDevice = parts[0].trim();
+                        customName = parts[1].trim();
+                        line = parts.slice(2).join(',').trim();
+                    }
+                } else if (hasOnlyDeviceCol) {
+                    const firstComma = line.indexOf(',');
+                    if (firstComma !== -1) {
+                        targetDevice = line.substring(0, firstComma).trim();
+                        line = line.substring(firstComma + 1).trim();
+                    }
+                }
+                
+                if (targetDevice) {
+                    let list = getDeviceList();
+                    if (!list.includes(targetDevice)) {
+                        list.push(targetDevice);
+                        localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
+                        if (!localStorage.getItem(`wheelData_${targetDevice}`)) {
+                            localStorage.setItem(`wheelData_${targetDevice}`, JSON.stringify([]));
+                        }
+                    }
+                    if (customName && customName !== targetDevice) {
+                        const map = getDeviceNamesMap();
+                        map[targetDevice] = customName;
+                        localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
+                    }
+                }
+                processCSV(line, targetDevice, true);
+                importedCount++;
+            }
+            updateDeviceSelectOptions(getCurrentDeviceKey());
+            renderRecentData(50);
+            return importedCount;
+        }
+
+        // ファイルからのインポート
         document.getElementById('importCsvFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
             reader.onload = function(event) {
-                const text = event.target.result;
-                const lines = text.split(/\r\n|\n/);
-                
-                if (lines.length === 0) return;
-                
-                const headerCols = lines[0].split(',');
-                const hasBleAndName = headerCols.length > 1 && headerCols[0].includes("Bluetooth") && headerCols[1].includes("個体名");
-                const hasOnlyDeviceCol = !hasBleAndName && (headerCols[0].includes("個体名") || headerCols[0].includes("デバイス"));
-                
-                let importedCount = 0;
-
-                for (let i = 1; i < lines.length; i++) {
-                    let line = lines[i].trim();
-                    if (!line) continue;
-                    
-                    let targetDevice = getCurrentDeviceKey();
-                    let customName = null;
-                    
-                    if (hasBleAndName) {
-                        const parts = line.split(',');
-                        if (parts.length > 2) {
-                            targetDevice = parts[0].trim();
-                            customName = parts[1].trim();
-                            line = parts.slice(2).join(',').trim();
-                        }
-                    } else if (hasOnlyDeviceCol) {
-                        const firstComma = line.indexOf(',');
-                        if (firstComma !== -1) {
-                            targetDevice = line.substring(0, firstComma).trim();
-                            line = line.substring(firstComma + 1).trim();
-                        }
-                    }
-                    
-                    if (targetDevice) {
-                        let list = getDeviceList();
-                        if (!list.includes(targetDevice)) {
-                            list.push(targetDevice);
-                            localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
-                            if (!localStorage.getItem(`wheelData_${targetDevice}`)) {
-                                localStorage.setItem(`wheelData_${targetDevice}`, JSON.stringify([]));
-                            }
-                        }
-                        
-                        if (customName && customName !== targetDevice) {
-                            const map = getDeviceNamesMap();
-                            map[targetDevice] = customName;
-                            localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
-                        }
-                    }
-
-                    processCSV(line, targetDevice, true);
-                    importedCount++;
-                }
-
-                updateDeviceSelectOptions(getCurrentDeviceKey());
-                renderRecentData(50);
-                alert(`${importedCount} 件のデータをインポートしました！\n※CSV内の指定に沿って自動振り分け保存されました。`);
+                const count = executeBulkCsvImport(event.target.result);
+                if(count > 0) alert(`${count} 件のデータをインポートしました！\n※CSV内の指定に沿って自動振り分け保存されました。`);
                 e.target.value = "";
             };
             reader.readAsText(file, 'UTF-8');
         });
 
+        // テキストからのインポート モーダル処理
+        document.getElementById('importTextBtn').addEventListener('click', () => {
+            document.getElementById('importTextArea').value = "";
+            document.getElementById('importModal').style.display = 'block';
+        });
+
+        document.getElementById('closeImportModalBtn').addEventListener('click', () => {
+            document.getElementById('importModal').style.display = 'none';
+        });
+
+        document.getElementById('execImportTextBtn').addEventListener('click', () => {
+            const text = document.getElementById('importTextArea').value;
+            if (!text || text.trim() === "") {
+                alert("データが貼り付けられていません。");
+                return;
+            }
+            const count = executeBulkCsvImport(text);
+            if(count > 0) alert(`${count} 件のデータをインポートしました！\n※CSV内の指定に沿って自動振り分け保存されました。`);
+            document.getElementById('importModal').style.display = 'none';
+        });
+
+        // グラフ項目切り替え
         document.getElementById('barTargetSelect').addEventListener('change', (e) => {
             const selectedIndex = parseInt(e.target.value);
             wheelChart.data.datasets.forEach((ds, index) => {
                 if (index === selectedIndex) {
-                    ds.type = 'bar';
-                    ds.backgroundColor = metricStyles[index].bgColor;
-                    ds.borderColor = metricStyles[index].borderColor;
-                    ds.borderWidth = 1;
-                    ds.order = 2;
+                    ds.type = 'bar'; ds.backgroundColor = metricStyles[index].bgColor; ds.borderColor = metricStyles[index].borderColor; ds.borderWidth = 1; ds.order = 2;
                 } else {
-                    ds.type = 'line';
-                    ds.backgroundColor = 'transparent';
-                    ds.borderColor = metricStyles[index].borderColor;
-                    ds.borderWidth = 2;
-                    ds.tension = 0.1;
-                    ds.order = 1;
+                    ds.type = 'line'; ds.backgroundColor = 'transparent'; ds.borderColor = metricStyles[index].borderColor; ds.borderWidth = 2; ds.tension = 0.1; ds.order = 1;
                 }
             });
             wheelChart.update();
         });
 
+        // 日付移動
         const dateFilter = document.getElementById('dateFilter');
-
         function showDateDataAndAround(targetDateStr) {
             const normDate = normalizeDateStr(targetDateStr);
             dateFilter.value = normDate;
             renderDataAroundDate(normDate, 50);
         }
-
         document.getElementById('filterBtn').addEventListener('click', () => {
             if (!dateFilter.value) { alert("日付を選択してください。"); return; }
             showDateDataAndAround(dateFilter.value);
         });
-
         function shiftDate(days) {
             let baseDateStr = dateFilter.value;
             if (!baseDateStr) {
                 const displayDateEl = document.getElementById('displayDate');
-                if (displayDateEl && displayDateEl.textContent && displayDateEl.textContent !== '--') {
-                    baseDateStr = displayDateEl.textContent;
-                }
+                if (displayDateEl && displayDateEl.textContent && displayDateEl.textContent !== '--') { baseDateStr = displayDateEl.textContent; }
             }
-
             let baseDate = parseDateString(baseDateStr);
-
             if (!baseDate) {
                 let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
-                if (history.length > 0) {
-                    history.sort((a, b) => new Date(a.time) - new Date(b.time));
-                    baseDate = parseDateString(history[history.length - 1].time);
-                }
+                if (history.length > 0) { history.sort((a, b) => new Date(a.time) - new Date(b.time)); baseDate = parseDateString(history[history.length - 1].time); }
             }
-
-            if (!baseDate) {
-                baseDate = new Date();
-            }
-
+            if (!baseDate) { baseDate = new Date(); }
             baseDate.setDate(baseDate.getDate() + days);
             showDateDataAndAround(formatDateString(baseDate));
         }
-
         document.getElementById('prevDayBtn').addEventListener('click', () => shiftDate(-1));
         document.getElementById('nextDayBtn').addEventListener('click', () => shiftDate(1));
         document.getElementById('resetBtn').addEventListener('click', () => { renderRecentData(50); });
@@ -928,7 +884,7 @@
         document.getElementById('copyCsvBtn').addEventListener('click', () => {
             const textArea = document.getElementById('csvTextArea');
             textArea.select();
-            textArea.setSelectionRange(0, 999999); // モバイル向けの選択範囲拡張
+            textArea.setSelectionRange(0, 999999);
             try {
                 document.execCommand('copy');
                 alert("クリップボードにコピーしました！\nメールやメモ帳アプリに「ペースト（貼り付け）」して保存・送信してください。");
@@ -949,7 +905,7 @@
             URL.revokeObjectURL(link.href);
         });
 
-        // --- 選択個体CSVエクスポート ---
+        // 選択個体エクスポート
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
@@ -984,7 +940,7 @@
             showCsvModal(csvContent, filename);
         });
 
-        // --- 全個体CSV一括エクスポート ---
+        // 全個体エクスポート
         document.getElementById('downloadAllCsvBtn').addEventListener('click', () => {
             const validOptions = Array.from(document.getElementById('deviceSelect').options).map(opt => opt.value);
             const map = getDeviceNamesMap();
@@ -1029,7 +985,7 @@
             showCsvModal(csvContent, filename);
         });
 
-        // --- データ全消去 ---
+        // データ全消去
         document.getElementById('clearBtn').addEventListener('click', () => {
             const currentName = getCurrentDeviceKey();
             const map = getDeviceNamesMap();
