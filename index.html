@@ -538,7 +538,7 @@
         connectBtn.addEventListener('click', async () => {
             try {
                 const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ services: [0xFFE0] }],
+                    acceptAllDevices: true,
                     optionalServices: [0xFFE0]
                 });
 
