@@ -193,7 +193,6 @@
             return JSON.parse(localStorage.getItem('wheelDeviceNamesMap')) || {};
         }
 
-        // 保存されている全データキーを元にリストを生成（重複排除）
         function getDeviceList() {
             let list = [];
             for (let i = 0; i < localStorage.length; i++) {
@@ -212,7 +211,6 @@
             return list;
         }
 
-        // ドロップダウン更新（個体名とBluetooth名を併記）
         function updateDeviceSelectOptions(targetKey = null) {
             const deviceSelect = document.getElementById('deviceSelect');
             if (!deviceSelect) return;
@@ -225,9 +223,8 @@
             list.sort().forEach(key => {
                 const customName = map[key] || key;
                 const opt = document.createElement('option');
-                opt.value = key; // valueはBluetooth本来のキー
+                opt.value = key; 
                 
-                // カスタム名が設定されていれば併記、なければそのまま
                 if (customName !== key) {
                     opt.textContent = `${customName} (BLE: ${key})`;
                 } else {
@@ -328,7 +325,6 @@
             const currentKey = getCurrentDeviceKey();
             localStorage.setItem('activeSelectedDevice', currentKey);
             
-            // 確定データの対象個体表示にも併記を反映
             const map = getDeviceNamesMap();
             const customName = map[currentKey] || currentKey;
             const displayName = customName !== currentKey ? `${customName} (BLE: ${currentKey})` : currentKey;
@@ -598,13 +594,11 @@
 
             for (let line of lines) {
                 line = line.trim();
-                if (line.length > 0) processCSV(line, null, false); // isBulkImport = false
+                if (line.length > 0) processCSV(line, null, false);
             }
         }
 
-        // --- データ登録処理（個体名の動的振り分けとサイレントインポート対応） ---
-        // targetDeviceKey: CSVインポート時に指定されるデバイスキー
-        // isBulkImport: 一括インポート時はダイアログをスキップして高速処理するためのフラグ
+        // --- データ登録処理 ---
         function processCSV(csvLine, targetDeviceKey = null, isBulkImport = false) {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
@@ -620,7 +614,6 @@
             let hourlyArr = [];
             let weightVal = undefined;
 
-            // パターンA: 末尾6要素 [開始時, 開始分, 終了時, 終了分, 直径, 累計回転数]
             if (values.length >= 10) {
                 const last6 = values.slice(-6);
                 const sH = parseInt(last6[0], 10);
@@ -639,7 +632,7 @@
                     const bodyCols = values.slice(4, values.length - 6);
                     if (bodyCols.length >= 25) {
                         const w = parseFloat(bodyCols[0]);
-                        if (!isNaN(w) && w > 0) weightVal = w; // 0gは無効として無視
+                        if (!isNaN(w) && w > 0) weightVal = w; // 0gは無視
                         for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
                     } else {
                         for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
@@ -647,7 +640,6 @@
                 }
             }
 
-            // パターンB: 従来の末尾5要素 [開始時, 開始分, 終了時, 終了分, 直径]
             if (!timeRangeStr && values.length >= 9) {
                 const last5 = values.slice(-5);
                 const sH = parseInt(last5[0], 10);
@@ -664,7 +656,7 @@
                     const bodyCols = values.slice(4, values.length - 5);
                     if (bodyCols.length >= 25) {
                         const w = parseFloat(bodyCols[0]);
-                        if (!isNaN(w) && w > 0) weightVal = w; // 0gは無効として無視
+                        if (!isNaN(w) && w > 0) weightVal = w; // 0gは無視
                         for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
                     } else {
                         for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
@@ -672,10 +664,9 @@
                 }
             }
 
-            // フォールバック
             if (hourlyArr.length === 0) {
                 const w = parseFloat(values[4]);
-                if (!isNaN(w) && w > 0) weightVal = w; // 0gは無効として無視
+                if (!isNaN(w) && w > 0) weightVal = w; // 0gは無視
                 for (let i = 5; i < Math.min(values.length, 29); i++) {
                     hourlyArr.push(parseFloat(values[i]) || 0);
                 }
@@ -684,7 +675,6 @@
 
             if (!dateValue || isNaN(rpmValue)) return; 
 
-            // 書き込み先のキー（インポート時は指定されたキー、通常時は現在選択中のキー）
             const currentTargetKey = targetDeviceKey || getCurrentDeviceKey();
             const storageKey = `wheelData_${currentTargetKey}`;
 
@@ -692,7 +682,6 @@
             const existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateValue);
             
             if (existingIndex !== -1) {
-                // CSV一括インポート中はダイアログを出さず、自動的にサイレント上書きする
                 if (!isBulkImport) {
                     const oldRpm = history[existingIndex].rpm || 0;
                     const newRpm = rpmValue;
@@ -741,7 +730,6 @@
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
             localStorage.setItem(storageKey, JSON.stringify(history));
             
-            // 一括インポート中は画面更新をスキップし、最後にまとめて1回だけ更新する
             if (!isBulkImport) {
                 updateDeviceSelectOptions(currentTargetKey);
                 renderRecentData(50);
@@ -776,7 +764,7 @@
             showDateDataAndAround(targetDateStr);
         });
 
-        // --- CSVインポート処理（個体名振り分け対応） ---
+        // --- CSVインポート処理 ---
         document.getElementById('importCsvFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -788,9 +776,10 @@
                 
                 if (lines.length === 0) return;
                 
-                // 1行目のヘッダーに「個体名」が含まれているかを判定
+                // ヘッダー確認 (A列がBluetooth名、B列が個体名か判定)
                 const headerCols = lines[0].split(',');
-                const hasDeviceCol = headerCols[0].includes("個体名") || headerCols[0].includes("デバイス");
+                const hasBleAndName = headerCols.length > 1 && headerCols[0].includes("Bluetooth") && headerCols[1].includes("個体名");
+                const hasOnlyDeviceCol = !hasBleAndName && (headerCols[0].includes("個体名") || headerCols[0].includes("デバイス"));
                 
                 let importedCount = 0;
 
@@ -799,9 +788,16 @@
                     if (!line) continue;
                     
                     let targetDevice = getCurrentDeviceKey();
+                    let customName = null;
                     
-                    // 個体名列が存在する場合は、A列から個体名を抽出して処理ラインから削る
-                    if (hasDeviceCol) {
+                    if (hasBleAndName) {
+                        const parts = line.split(',');
+                        if (parts.length > 2) {
+                            targetDevice = parts[0].trim();
+                            customName = parts[1].trim();
+                            line = parts.slice(2).join(',').trim();
+                        }
+                    } else if (hasOnlyDeviceCol) {
                         const firstComma = line.indexOf(',');
                         if (firstComma !== -1) {
                             targetDevice = line.substring(0, firstComma).trim();
@@ -809,7 +805,6 @@
                         }
                     }
                     
-                    // CSV内に未登録の個体名があれば自動で枠を作成
                     if (targetDevice) {
                         let list = getDeviceList();
                         if (!list.includes(targetDevice)) {
@@ -819,17 +814,21 @@
                                 localStorage.setItem(`wheelData_${targetDevice}`, JSON.stringify([]));
                             }
                         }
+                        
+                        if (customName && customName !== targetDevice) {
+                            const map = getDeviceNamesMap();
+                            map[targetDevice] = customName;
+                            localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
+                        }
                     }
 
-                    // isBulkImport = true として呼び出し、ダイアログをスキップ
                     processCSV(line, targetDevice, true);
                     importedCount++;
                 }
 
-                // すべてインポートし終えた後に1回だけ画面を再描画
                 updateDeviceSelectOptions(getCurrentDeviceKey());
                 renderRecentData(50);
-                alert(`${importedCount} 件のデータをインポートしました！\n※CSV内の個体名に沿って自動振り分け保存されました。`);
+                alert(`${importedCount} 件のデータをインポートしました！\n※CSV内の指定に沿って自動振り分け保存されました。`);
                 e.target.value = "";
             };
             reader.readAsText(file, 'UTF-8');
@@ -905,17 +904,19 @@
             renderRecentData(50);
         });
 
-        // --- CSV一括ダウンロード（左端に「個体名」を追加して出力） ---
+        // --- CSVエクスポート ---
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
 
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
-            // ヘッダーの先頭に「個体名」を追加
-            let csvContent = "個体名,日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
+            // ★ヘッダーの先頭に「Bluetooth名」と「個体名(表示名)」を追加
+            let csvContent = "Bluetooth名,個体名(表示名),日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
             
             const currentDevKey = getCurrentDeviceKey();
+            const map = getDeviceNamesMap();
+            const customName = map[currentDevKey] || currentDevKey;
 
             history.forEach(item => {
                 const w = item.weight !== undefined ? item.weight : "";
@@ -941,8 +942,8 @@
                 const diameterStr = item.diameter !== undefined ? item.diameter : "";
                 const accRpmStr = item.accumulatedRpm !== undefined ? item.accumulatedRpm : "";
                 
-                // 行の先頭に currentDevKey を挿入
-                csvContent += `${currentDevKey},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr}\r\n`;
+                // ★各行の先頭に Bluetooth名 と 表示用個体名 を挿入
+                csvContent += `${currentDevKey},${customName},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr}\r\n`;
             });
 
             const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
@@ -950,17 +951,22 @@
             const today = formatDateString(new Date());
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `${currentDevKey}_wheel_data_${today}.csv`;
+            // ダウンロード時のファイル名も分かりやすくカスタム名を利用
+            const safeName = customName.replace(/[\\/:*?"<>|]/g, "_");
+            link.download = `${safeName}_wheel_data_${today}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
         });
 
-        // --- データ全消去（ゴーストデータ完全対応版） ---
+        // --- データ全消去 ---
         document.getElementById('clearBtn').addEventListener('click', () => {
             const currentName = getCurrentDeviceKey();
-            if (confirm(`本当に個体 [${currentName}] のすべてのデータを消去しますか？\n（他の個体のデータは消去されません）`)) {
+            const map = getDeviceNamesMap();
+            const customName = map[currentName] || currentName;
+
+            if (confirm(`本当に個体 [${customName}] のすべてのデータを消去しますか？\n（他の個体のデータは消去されません）`)) {
                 
                 let keysToRemove = [];
                 for (let i = 0; i < localStorage.length; i++) {
@@ -973,7 +979,6 @@
                 }
                 keysToRemove.forEach(k => localStorage.removeItem(k));
                 
-                const map = getDeviceNamesMap();
                 let mapChanged = false;
                 Object.keys(map).forEach(k => {
                     if (k.trim() === currentName || map[k].trim() === currentName) {
@@ -987,7 +992,7 @@
 
                 updateDeviceSelectOptions();
                 renderRecentData(50);
-                alert(`個体 [${currentName}] のデータを完全に消去しました。`);
+                alert(`個体 [${customName}] のデータを完全に消去しました。`);
             }
         });
     </script>
