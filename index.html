@@ -79,8 +79,8 @@
             <!-- 動的に生成されます -->
         </select><br>
         <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold; margin-top: 6px;">Bluetooth 接続</button>
-        <button id="addDeviceBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">＋ 新規個体を追加</button>
-        <button id="renameBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">選択中の個体名を変更</button>
+        <button id="addDeviceBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">＋ 新規個体を手動追加</button>
+        <button id="renameBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">個体名（表示名）を変更</button>
     </div><br>
 
     <!-- 体重手動入力コントロール -->
@@ -189,9 +189,13 @@
             return `${yyyy}-${mm}-${dd}`;
         }
 
+        function getDeviceNamesMap() {
+            return JSON.parse(localStorage.getItem('wheelDeviceNamesMap')) || {};
+        }
+
+        // 保存されている全データキーを元にリストを生成（重複排除）
         function getDeviceList() {
-            let list = JSON.parse(localStorage.getItem('wheelRegisteredDevices')) || [];
-            
+            let list = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const k = localStorage.key(i);
                 if (k && k.startsWith('wheelData_')) {
@@ -201,26 +205,34 @@
                     }
                 }
             }
-
             if (list.length === 0) {
                 list = ['GIGI-01'];
+                localStorage.setItem('wheelData_GIGI-01', JSON.stringify([]));
             }
-            localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
             return list;
         }
 
+        // ドロップダウン更新（個体名とBluetooth名を併記）
         function updateDeviceSelectOptions(targetKey = null) {
             const deviceSelect = document.getElementById('deviceSelect');
             if (!deviceSelect) return;
 
             const list = getDeviceList();
+            const map = getDeviceNamesMap();
             const currentSelected = targetKey || localStorage.getItem('activeSelectedDevice') || list[0];
 
             deviceSelect.innerHTML = '';
-            list.forEach(name => {
+            list.sort().forEach(key => {
+                const customName = map[key] || key;
                 const opt = document.createElement('option');
-                opt.value = name;
-                opt.textContent = name;
+                opt.value = key; // valueはBluetooth本来のキー
+                
+                // カスタム名が設定されていれば併記、なければそのまま
+                if (customName !== key) {
+                    opt.textContent = `${customName} (BLE: ${key})`;
+                } else {
+                    opt.textContent = `${key}`;
+                }
                 deviceSelect.appendChild(opt);
             });
 
@@ -315,7 +327,12 @@
         function renderRecentData(limit = 50) {
             const currentKey = getCurrentDeviceKey();
             localStorage.setItem('activeSelectedDevice', currentKey);
-            document.getElementById('displayDeviceName').textContent = currentKey;
+            
+            // 確定データの対象個体表示にも併記を反映
+            const map = getDeviceNamesMap();
+            const customName = map[currentKey] || currentKey;
+            const displayName = customName !== currentKey ? `${customName} (BLE: ${currentKey})` : currentKey;
+            document.getElementById('displayDeviceName').textContent = displayName;
 
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -338,7 +355,11 @@
         function renderDataAroundDate(targetDateStr, limit = 50) {
             const currentKey = getCurrentDeviceKey();
             localStorage.setItem('activeSelectedDevice', currentKey);
-            document.getElementById('displayDeviceName').textContent = currentKey;
+            
+            const map = getDeviceNamesMap();
+            const customName = map[currentKey] || currentKey;
+            const displayName = customName !== currentKey ? `${customName} (BLE: ${currentKey})` : currentKey;
+            document.getElementById('displayDeviceName').textContent = displayName;
 
             const normalizedTarget = normalizeDateStr(targetDateStr);
 
@@ -476,52 +497,45 @@
             renderRecentData(50);
         });
 
-        // ＋ 新規個体を手動追加するボタン
+        // ＋ 新規個体を手動追加
         document.getElementById('addDeviceBtn').addEventListener('click', () => {
-            const name = prompt("新しく登録する個体名を入力してください（例: GIGI-02, モモ など）:");
-            if (name && name.trim() !== "") {
-                const trimmed = name.trim();
+            const keyName = prompt("新しく登録するデバイス名（Bluetooth名 または 識別キー）を入力してください\n※例: GIGI-02");
+            if (keyName && keyName.trim() !== "") {
+                const trimmedKey = keyName.trim();
                 let list = getDeviceList();
-                if (!list.includes(trimmed)) {
-                    list.push(trimmed);
-                    localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
+                if (!list.includes(trimmedKey)) {
+                    localStorage.setItem(`wheelData_${trimmedKey}`, JSON.stringify([]));
+                    
+                    const customName = prompt(`デバイス [${trimmedKey}] の個体名（表示用）を入力してください:\n※例: モモ`, trimmedKey);
+                    const map = getDeviceNamesMap();
+                    map[trimmedKey] = (customName && customName.trim() !== "") ? customName.trim() : trimmedKey;
+                    localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
                 }
-                updateDeviceSelectOptions(trimmed);
+                updateDeviceSelectOptions(trimmedKey);
                 renderRecentData(50);
-                alert(`個体 [${trimmed}] を追加し、表示を切り替えました！`);
+                alert(`個体 [${trimmedKey}] を追加し、表示を切り替えました！`);
             }
         });
 
-        // 選択中の個体名を変更するボタン
+        // 個体名（表示用カスタム名）を変更
         document.getElementById('renameBtn').addEventListener('click', () => {
             const currentKey = getCurrentDeviceKey();
-            const newName = prompt(`現在選択中の [${currentKey}] の新しい名前を入力してください:`, currentKey);
+            const map = getDeviceNamesMap();
+            const currentName = map[currentKey] || currentKey;
             
-            if (newName && newName.trim() !== "" && newName.trim() !== currentKey) {
-                const trimmedName = newName.trim();
-                const oldData = localStorage.getItem(`wheelData_${currentKey}`);
+            const newName = prompt(`Bluetooth名 [${currentKey}] の個体名（表示名）を変更します。\n新しい名前を入力してください:`, currentName);
+            
+            if (newName && newName.trim() !== "" && newName.trim() !== currentName) {
+                map[currentKey] = newName.trim();
+                localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
                 
-                if (oldData) {
-                    localStorage.setItem(`wheelData_${trimmedName}`, oldData);
-                    localStorage.removeItem(`wheelData_${currentKey}`);
-                }
-                
-                let list = getDeviceList();
-                const idx = list.indexOf(currentKey);
-                if (idx !== -1) {
-                    list[idx] = trimmedName;
-                } else {
-                    list.push(trimmedName);
-                }
-                localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
-
-                updateDeviceSelectOptions(trimmedName);
+                updateDeviceSelectOptions(currentKey);
                 renderRecentData(50);
-                alert(`個体名を [${trimmedName}] に変更しました！`);
+                alert(`個体名を [${newName.trim()}] に変更しました！`);
             }
         });
 
-        // --- Bluetooth 受信 ---
+        // --- Bluetooth 接続・受信処理 ---
         const connectBtn = document.getElementById('connectBtn');
         let receiveBuffer = "";
 
@@ -539,28 +553,42 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
                 
-                let detectedName = (device.name && device.name.trim() !== "") ? device.name.trim() : "";
-                let chosenName = prompt(
-                    "Bluetoothデバイスに接続しました。\nこの機器の個体名を確認・入力してください:",
-                    detectedName || getCurrentDeviceKey() || "GIGI-01"
-                );
-
-                if (!chosenName || chosenName.trim() === "") {
-                    chosenName = detectedName || getCurrentDeviceKey() || "GIGI-01";
-                }
-                chosenName = chosenName.trim();
-
+                // Bluetoothデバイス名の判定
+                let detectedName = (device.name && device.name.trim() !== "") ? device.name.trim() : "Unknown_Device";
                 let list = getDeviceList();
-                if (!list.includes(chosenName)) {
-                    list.push(chosenName);
-                    localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
+                let map = getDeviceNamesMap();
+
+                if (list.includes(detectedName)) {
+                    // すでに登録済みのデバイスなら自動切り替え
+                    updateDeviceSelectOptions(detectedName);
+                    renderRecentData(50);
+                    const customName = map[detectedName] || detectedName;
+                    connectBtn.textContent = `接続中: ${customName}`;
+                    alert(`登録済みのデバイス [${detectedName}] に接続しました。\n個体 [${customName}] に表示を切り替えます。`);
+                } else {
+                    // はじめてのデバイスの場合は表示名を聞く
+                    let chosenName = prompt(
+                        `新しいBluetoothデバイス [${detectedName}] に接続しました。\nこの個体の名前（表示名）を入力してください:`,
+                        detectedName
+                    );
+
+                    if (!chosenName || chosenName.trim() === "") {
+                        chosenName = detectedName;
+                    } else {
+                        chosenName = chosenName.trim();
+                    }
+
+                    // 表示名マップと空のデータを登録
+                    map[detectedName] = chosenName;
+                    localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
+                    localStorage.setItem(`wheelData_${detectedName}`, JSON.stringify([]));
+
+                    updateDeviceSelectOptions(detectedName);
+                    renderRecentData(50);
+
+                    connectBtn.textContent = `接続中: ${chosenName}`;
+                    alert(`新規デバイス [${detectedName}] を個体名 [${chosenName}] として登録・接続しました！`);
                 }
-
-                updateDeviceSelectOptions(chosenName);
-                renderRecentData(50);
-
-                connectBtn.textContent = `接続中: ${chosenName}`;
-                alert(`[${chosenName}] に接続完了しました！受信を開始します。`);
             } catch (error) {
                 console.error(error);
                 alert("接続に失敗したか、キャンセルされました。");
@@ -579,7 +607,7 @@
             }
         }
 
-        // --- データ登録処理（同日重複時の回転数確認・置換ダイアログ対応） ---
+        // --- データ登録・重複時の上書き確認処理 ---
         function processCSV(csvLine) {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
@@ -661,13 +689,15 @@
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             const existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateValue);
             
-            // ★同日データが存在する場合の確認ダイアログ
+            // 同日データが存在する場合の上書き確認
             if (existingIndex !== -1) {
                 const oldRpm = history[existingIndex].rpm || 0;
                 const newRpm = rpmValue;
+                const map = getDeviceNamesMap();
+                const dName = map[getCurrentDeviceKey()] || getCurrentDeviceKey();
 
                 const msg = `【同日データの上書き確認】\n` +
-                            `個体: [${getCurrentDeviceKey()}]\n` +
+                            `個体: [${dName}]\n` +
                             `日付: ${dateValue} のデータは既に存在します。\n\n` +
                             `・既存の回転数: ${Number(oldRpm).toLocaleString()} 回\n` +
                             `・受信した回転数: ${Number(newRpm).toLocaleString()} 回\n\n` +
@@ -676,11 +706,9 @@
 
                 const confirmReplace = confirm(msg);
                 if (!confirmReplace) {
-                    // キャンセル時は置き換えずに終了
-                    return;
+                    return; // キャンセル時は破棄
                 }
 
-                // 「OK」が押された場合は上書き更新
                 history[existingIndex].rpm = rpmValue;
                 history[existingIndex].speed = speedValue;
                 history[existingIndex].duration = timeValue;
@@ -692,7 +720,6 @@
                 if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
                 if (accumulatedRpmVal !== undefined) history[existingIndex].accumulatedRpm = accumulatedRpmVal;
             } else {
-                // 新規日付の場合はそのまま追加
                 history.push({ 
                     time: dateValue, 
                     rpm: rpmValue, 
@@ -710,6 +737,7 @@
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
             localStorage.setItem(getStorageKey(), JSON.stringify(history));
             
+            updateDeviceSelectOptions(getCurrentDeviceKey());
             renderRecentData(50);
         }
 
@@ -761,7 +789,7 @@
 
                 updateDeviceSelectOptions(getCurrentDeviceKey());
                 renderRecentData(50);
-                alert(`[${getCurrentDeviceKey()}] へのインポート処理が完了しました！`);
+                alert(`[${getCurrentDeviceKey()}] に ${importedCount} 件のデータをインポートしました！`);
                 e.target.value = "";
             };
             reader.readAsText(file, 'UTF-8');
@@ -889,10 +917,10 @@
             if (confirm(`本当に個体 [${currentName}] のすべてのデータを消去しますか？\n（他の個体のデータは消去されません）`)) {
                 localStorage.removeItem(getStorageKey());
                 
+                // 完全消去時のみリストから消去する
                 let list = getDeviceList().filter(n => n !== currentName);
                 if (list.length === 0) list = ['GIGI-01'];
-                localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
-
+                
                 updateDeviceSelectOptions(list[0]);
                 renderRecentData(50);
                 alert(`個体 [${currentName}] のデータを消去しました。`);
