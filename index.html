@@ -958,14 +958,15 @@
             URL.revokeObjectURL(link.href);
         });
 
-        // --- ★全個体CSV一括エクスポート ---
+        // --- ★全個体CSV一括エクスポート（ゴーストデータ排除版） ---
         document.getElementById('downloadAllCsvBtn').addEventListener('click', () => {
-            const list = getDeviceList();
+            // プルダウンに表示されている「現在有効な個体」だけを抽出
+            const validOptions = Array.from(document.getElementById('deviceSelect').options).map(opt => opt.value);
             const map = getDeviceNamesMap();
             let allHistory = [];
 
-            // すべての個体のデータを1つの配列に収集
-            list.forEach(devKey => {
+            // 有効な個体のデータのみを1つの配列に収集
+            validOptions.forEach(devKey => {
                 const history = JSON.parse(localStorage.getItem(`wheelData_${devKey}`)) || [];
                 history.forEach(item => {
                     allHistory.push({
