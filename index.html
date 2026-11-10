@@ -189,11 +189,9 @@
             return `${yyyy}-${mm}-${dd}`;
         }
 
-        // 個体一覧リストの取得
         function getDeviceList() {
             let list = JSON.parse(localStorage.getItem('wheelRegisteredDevices')) || [];
             
-            // localStorage のキーから wheelData_ で始まるものをすべて吸い上げる
             for (let i = 0; i < localStorage.length; i++) {
                 const k = localStorage.key(i);
                 if (k && k.startsWith('wheelData_')) {
@@ -211,7 +209,6 @@
             return list;
         }
 
-        // 個体一覧ドロップダウンの更新
         function updateDeviceSelectOptions(targetKey = null) {
             const deviceSelect = document.getElementById('deviceSelect');
             if (!deviceSelect) return;
@@ -245,7 +242,6 @@
             return `wheelData_${getCurrentDeviceKey()}`;
         }
 
-        // 初期構築
         updateDeviceSelectOptions();
 
         const metricStyles = [
@@ -543,7 +539,6 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
                 
-                // 接続デバイス名の確定
                 let detectedName = (device.name && device.name.trim() !== "") ? device.name.trim() : "";
                 let chosenName = prompt(
                     "Bluetoothデバイスに接続しました。\nこの機器の個体名を確認・入力してください:",
@@ -555,14 +550,12 @@
                 }
                 chosenName = chosenName.trim();
 
-                // 個体リストに登録
                 let list = getDeviceList();
                 if (!list.includes(chosenName)) {
                     list.push(chosenName);
                     localStorage.setItem('wheelRegisteredDevices', JSON.stringify(list));
                 }
 
-                // セレクトボックスを接続機器に切り替え
                 updateDeviceSelectOptions(chosenName);
                 renderRecentData(50);
 
@@ -586,6 +579,7 @@
             }
         }
 
+        // --- データ登録処理（同日重複時の回転数確認・置換ダイアログ対応） ---
         function processCSV(csvLine) {
             const values = csvLine.split(',');
             if (values.length < 5) return; 
@@ -667,7 +661,26 @@
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             const existingIndex = history.findIndex(item => normalizeDateStr(item.time) === dateValue);
             
+            // ★同日データが存在する場合の確認ダイアログ
             if (existingIndex !== -1) {
+                const oldRpm = history[existingIndex].rpm || 0;
+                const newRpm = rpmValue;
+
+                const msg = `【同日データの上書き確認】\n` +
+                            `個体: [${getCurrentDeviceKey()}]\n` +
+                            `日付: ${dateValue} のデータは既に存在します。\n\n` +
+                            `・既存の回転数: ${Number(oldRpm).toLocaleString()} 回\n` +
+                            `・受信した回転数: ${Number(newRpm).toLocaleString()} 回\n\n` +
+                            `新しいデータで置き換えますか？\n` +
+                            `（「キャンセル」を押すとこの受信データは破棄されます）`;
+
+                const confirmReplace = confirm(msg);
+                if (!confirmReplace) {
+                    // キャンセル時は置き換えずに終了
+                    return;
+                }
+
+                // 「OK」が押された場合は上書き更新
                 history[existingIndex].rpm = rpmValue;
                 history[existingIndex].speed = speedValue;
                 history[existingIndex].duration = timeValue;
@@ -679,6 +692,7 @@
                 if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
                 if (accumulatedRpmVal !== undefined) history[existingIndex].accumulatedRpm = accumulatedRpmVal;
             } else {
+                // 新規日付の場合はそのまま追加
                 history.push({ 
                     time: dateValue, 
                     rpm: rpmValue, 
@@ -747,7 +761,7 @@
 
                 updateDeviceSelectOptions(getCurrentDeviceKey());
                 renderRecentData(50);
-                alert(`[${getCurrentDeviceKey()}] に ${importedCount} 件のデータをインポートしました！`);
+                alert(`[${getCurrentDeviceKey()}] へのインポート処理が完了しました！`);
                 e.target.value = "";
             };
             reader.readAsText(file, 'UTF-8');
