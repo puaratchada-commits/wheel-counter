@@ -80,7 +80,8 @@
             <label style="font-size: 14px; font-weight: bold;">【データ取り込み】</label>
         </div>
         <label for="importCsvFile" style="font-size: 13px; cursor: pointer;">ファイル選択: </label>
-        <input type="file" id="importCsvFile" accept=".csv" style="font-size: 13px; max-width: 200px;">
+        <!-- 修正: max-widthを削除し、文字列が完全に表示されるように変更 -->
+        <input type="file" id="importCsvFile" accept=".csv" style="font-size: 13px;">
         <br>
         <button id="importTextBtn" style="font-size: 13px; padding: 6px 14px; margin-top: 8px; background-color: #ffe0b2; color: #e65100; border: 1px solid #ffcc80; font-weight: bold;">＋ テキストを貼り付けてインポート</button>
         
