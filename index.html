@@ -12,6 +12,20 @@
         button { background-color: #fff; transition: background 0.2s; }
         button:hover { background-color: #f0f0f0; }
         .chart-box { width: 100%; max-width: 650px; margin: 15px auto; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+        
+        /* グラフコンテナの高さ調整（追加） */
+        .chart-container-wrapper {
+            position: relative;
+            width: 100%;
+            height: 400px; /* PCでの基本の高さ */
+        }
+        /* スマホ画面の時はさらに高さを確保して見やすくする */
+        @media screen and (max-width: 600px) {
+            .chart-container-wrapper {
+                height: 500px;
+            }
+        }
+
         #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; border: 1px solid #e0e0e0; line-height: 1.8; }
         .device-box { background: #e3f2fd; padding: 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
         .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
@@ -80,7 +94,6 @@
             <label style="font-size: 14px; font-weight: bold;">【データ取り込み】</label>
         </div>
         <label for="importCsvFile" style="font-size: 13px; cursor: pointer;">ファイル選択: </label>
-        <!-- 修正: max-widthを削除し、文字列が完全に表示されるように変更 -->
         <input type="file" id="importCsvFile" accept=".csv" style="font-size: 13px;">
         <br>
         <button id="importTextBtn" style="font-size: 13px; padding: 6px 14px; margin-top: 8px; background-color: #ffe0b2; color: #e65100; border: 1px solid #ffcc80; font-weight: bold;">＋ テキストを貼り付けてインポート</button>
@@ -116,7 +129,9 @@
     <!-- 全体推移グラフ -->
     <div class="chart-box">
         <h3>【日付ごとの推移】</h3>
-        <canvas id="wheelChart"></canvas>
+        <div class="chart-container-wrapper">
+            <canvas id="wheelChart"></canvas>
+        </div>
     </div>
 
     <!-- 【日付ごとの推移】グラフ下の累計表示エリア -->
@@ -309,6 +324,7 @@
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false, // スマホ表示時に高さが潰れないように設定
                 onClick: (event, elements) => {
                     if (elements && elements.length > 0) {
                         const index = elements[0].index;
