@@ -10,6 +10,8 @@
 
 bluetoothターミナルアプリのBLUETOOTH SERIALをインストールしてここからSafariにデータをテキストで送ります。
 
+BLUETOOTH SERIALアプリは日報の表示も出来ます。
+
 なおカウンターからはグラフ表示管理用のCSVデータと
 
 日報表示のテキストデータの２種類をbluetoothで送信できます。
