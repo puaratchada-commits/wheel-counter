@@ -13,7 +13,7 @@
         button:hover { background-color: #f0f0f0; }
         .chart-box { width: 100%; max-width: 650px; margin: 15px auto; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
         
-        /* グラフコンテナの高さ調整（追加） */
+        /* グラフコンテナの高さ調整 */
         .chart-container-wrapper {
             position: relative;
             width: 100%;
@@ -22,8 +22,13 @@
         /* スマホ画面の時はさらに高さを確保して見やすくする */
         @media screen and (max-width: 600px) {
             .chart-container-wrapper {
-                height: 300px;
+                height: 350px;
             }
+        }
+        /* グラフが縮まないようにキャンバスサイズを強制フィット */
+        .chart-container-wrapper canvas {
+            width: 100% !important;
+            height: 100% !important;
         }
 
         #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; border: 1px solid #e0e0e0; line-height: 1.8; }
@@ -196,7 +201,7 @@
             <p style="font-size:13px; color:#555; margin-bottom:10px;">
                 コピーしたCSVの文字データを下の枠に「ペースト（貼り付け）」して、インポートボタンを押してください。（複数個体も自動振り分けされます）
             </p>
-            <textarea id="importTextArea" class="modal-textarea" placeholder="ここにCSVデータを貼り付けます..." style="background: #fff;"></textarea>
+            <textarea id="importTextArea" class="modal-textarea" placeholder="ここにCSVデータまたはExcelデータを貼り付けます..." style="background: #fff;"></textarea>
             <div class="modal-btns">
                 <button id="execImportTextBtn" style="background-color: #ff9800; color: white; width: 100%;">インポート実行</button>
             </div>
@@ -262,7 +267,8 @@
             return list;
         }
 
-        function SelectOptions(targetKey = null) {
+        // 修正箇所：関数名を「updateDeviceSelectOptions」に直しました
+        function updateDeviceSelectOptions(targetKey = null) {
             const deviceSelect = document.getElementById('deviceSelect');
             if (!deviceSelect) return;
 
@@ -762,6 +768,9 @@
 
         // 共通CSVインポート処理ロジック
         function executeBulkCsvImport(text) {
+            // 【追加】Excelからのコピペ（タブ区切り）をカンマに自動変換
+            text = text.replace(/\t/g, ',');
+
             const lines = text.split(/\r\n|\n/);
             if (lines.length === 0) return 0;
             
@@ -812,6 +821,13 @@
             }
             updateDeviceSelectOptions(getCurrentDeviceKey());
             renderRecentData(50);
+            
+            // スマホでのグラフ縮小バグ防止のため、明示的にサイズを再計算させる
+            setTimeout(() => {
+                wheelChart.resize();
+                hourlyChart.resize();
+            }, 100);
+
             return importedCount;
         }
 
