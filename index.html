@@ -267,7 +267,6 @@
             return list;
         }
 
-        // 修正箇所：関数名を「updateDeviceSelectOptions」に直しました
         function updateDeviceSelectOptions(targetKey = null) {
             const deviceSelect = document.getElementById('deviceSelect');
             if (!deviceSelect) return;
@@ -768,7 +767,7 @@
 
         // 共通CSVインポート処理ロジック
         function executeBulkCsvImport(text) {
-            // 【追加】Excelからのコピペ（タブ区切り）をカンマに自動変換
+            // Excelからのコピペ（タブ区切り）をカンマに自動変換
             text = text.replace(/\t/g, ',');
 
             const lines = text.split(/\r\n|\n/);
@@ -778,8 +777,12 @@
             const hasBleAndName = headerCols.length > 1 && headerCols[0].includes("Bluetooth") && headerCols[1].includes("個体名");
             const hasOnlyDeviceCol = !hasBleAndName && (headerCols[0].includes("個体名") || headerCols[0].includes("デバイス"));
             
+            // 1行目が見出し（ヘッダー）か、データ本体かを自動判定
+            const isHeader = lines[0].includes("日付") || lines[0].includes("回転数") || lines[0].includes("Bluetooth");
+            const startIndex = isHeader ? 1 : 0; // 見出しがなければ1行目(0)から取り込む
+            
             let importedCount = 0;
-            for (let i = 1; i < lines.length; i++) {
+            for (let i = startIndex; i < lines.length; i++) {
                 let line = lines[i].trim();
                 if (!line) continue;
                 
