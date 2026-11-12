@@ -8,11 +8,16 @@
 
 ※iPhoneのSarfariやChromeはbluetooth通信が出来ないのでWebBLEという有料ブラウザ（300円買取）をインストールする必要があります。
 
-データーはAndroidスマホとiPhoneとPCで転送できます。
+なおカウンターからはグラフ表示管理用のCSVデータと
 
-以下の図を参照して下さい。
+日報表示のテキストデータの２種類をbluetoothで送信できます。
+
+iPhoneでの運用は以下の通りです。
 
 ![ダッシュボードデータ移行図 iPhone](iphone.jpg)
+
+Androidでの運用は以下の通りです。
+
 ![ダッシュボードデータ移行図 Android](android.jpg)
 
 １）初期設定とBluetooth接続
