@@ -6,7 +6,9 @@
 
 運用はbluetoothを受信するためにAndroidスマホ、iPhone、PC、のブラウザで行います。
 
-※iPhoneのSarfariやChromeはbluetooth通信が出来ないのでWebBLEという有料ブラウザ（300円買取）をインストールする必要があります。
+※iPhoneのSarfariやChromeはbluetooth通信が出来ないのでWebBLEという有料ブラウザ（300円買取）をインストールするか
+
+bluetoothターミナルアプリのBLUETOOTH SERIALをインストールしてここからSafariにデータをテキストで送ります。
 
 なおカウンターからはグラフ表示管理用のCSVデータと
 
