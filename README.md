@@ -1,4 +1,3 @@
-[WEBアプリ説明書.md](https://github.com/user-attachments/files/34721795/WEB.md)
 **回し車＆体重 マルチダッシュボード 取扱説明書**
 
 アクセスURL: <https://puaratchada-commits.github.io/wheel-counter/>
