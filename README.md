@@ -14,7 +14,7 @@
 
 iPhoneでの運用は以下の通りです。
 
-![ダッシュボードデータ移行図 iPhone](iphone.jpg)
+![ダッシュボードデータ移行図 iPhone](iphone2.jpg)
 
 Androidでの運用は以下の通りです。
 
