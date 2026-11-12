@@ -262,7 +262,7 @@
             return list;
         }
 
-        function updateDeviceSelectOptions(targetKey = null) {
+        function SelectOptions(targetKey = null) {
             const deviceSelect = document.getElementById('deviceSelect');
             if (!deviceSelect) return;
 
@@ -812,6 +812,11 @@
             }
             updateDeviceSelectOptions(getCurrentDeviceKey());
             renderRecentData(50);
+            // スマホでのグラフ縮小バグ防止のため、明示的にサイズを再計算させる
+            setTimeout(() => {
+                wheelChart.resize();
+                hourlyChart.resize();
+            }, 100);
             return importedCount;
         }
 
