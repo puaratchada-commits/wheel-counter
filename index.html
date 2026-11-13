@@ -143,16 +143,6 @@
     <div class="accumulated-box">
         <b>【本体累計記録】</b> 累計回転数: <span id="displayAccumulatedRpm" style="font-weight: bold; color: #d32f2f;">-- 回</span>
     </div>
-
-    <!-- 日付操作コントロール（グラフ間に配置） -->
-    <div class="date-controls">
-        <button id="prevDayBtn">◀ 前日</button>
-        <input type="date" id="dateFilter">
-        <button id="nextDayBtn">翌日 ▶</button>
-        <button id="filterBtn">指定日周辺を表示</button>
-        <button id="resetBtn">最新に戻る</button>
-    </div>
-
     <!-- 12時〜翌11時 時間帯別分布グラフ -->
     <div class="chart-box">
         <h3 id="hourlyTitle">【24時間分布】</h3>
@@ -165,7 +155,14 @@
         </div>
         <canvas id="hourlyChart"></canvas>
     </div>
-
+    <!-- 日付操作コントロール（グラフ間に配置） -->
+    <div class="date-controls">
+        <button id="prevDayBtn">◀ 前日</button>
+        <input type="date" id="dateFilter">
+        <button id="nextDayBtn">翌日 ▶</button>
+        <button id="filterBtn">指定日周辺を表示</button>
+        <button id="resetBtn">最新に戻る</button>
+    </div>
     <!-- 集計結果表示エリア -->
     <div id="statsContainer">
         <b>【選択個体・日の確定データ】</b><br>
