@@ -133,7 +133,7 @@
 
     <!-- 全体推移グラフ -->
     <div class="chart-box">
-        <h3>【日付ごとの推移】</h3>
+        <h3>【日付ごとの推移】 <span id="displayDateRange" style="font-size: 15px; color: #555; font-weight: bold; margin-left: 8px;"></span></h3>
         <div class="chart-container-wrapper">
             <canvas id="wheelChart"></canvas>
         </div>
@@ -465,6 +465,17 @@
                 wheelChart.data.datasets[3].data.push(item.weight !== undefined ? item.weight : null);
             });
             wheelChart.update();
+
+            const dateRangeEl = document.getElementById('displayDateRange');
+            if (dateRangeEl) {
+                if (dataList.length > 0) {
+                    const startDate = normalizeDateStr(dataList[0].time);
+                    const endDate = normalizeDateStr(dataList[dataList.length - 1].time);
+                    dateRangeEl.textContent = `${startDate} ～ ${endDate}`;
+                } else {
+                    dateRangeEl.textContent = "";
+                }
+            }
         }
 
         function updateStatsAndHourly(record) {
