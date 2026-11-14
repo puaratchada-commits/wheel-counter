@@ -89,6 +89,9 @@
             <!-- 動的に生成されます -->
         </select><br>
         <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold; margin-top: 6px;">Bluetooth 接続</button>
+        <!-- 【追加】Bluetooth 切断ボタン -->
+        <button id="disconnectBtn" style="background-color: #ffcdd2; font-weight: bold; margin-top: 6px; display: none;">Bluetooth 切断</button>
+        <br>
         <button id="addDeviceBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">＋ 新規個体を手動追加</button>
         <button id="renameBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">個体名（表示名）を変更</button>
     </div><br>
@@ -573,15 +576,31 @@
             }
         });
 
+        // --- Bluetooth接続・切断 処理 ---
         const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
         let receiveBuffer = "";
+        let globalBluetoothDevice = null; // 接続中のデバイスを保持
 
+        // 予期せぬ切断時の処理
+        function onDisconnected(event) {
+            const device = event.target;
+            console.log(`デバイス ${device.name} との接続が切れました。`);
+            connectBtn.textContent = 'Bluetooth 接続';
+            disconnectBtn.style.display = 'none';
+            globalBluetoothDevice = null;
+        }
+
+        // 接続ボタン
         connectBtn.addEventListener('click', async () => {
             try {
                 const device = await navigator.bluetooth.requestDevice({
                     filters: [{ services: [0xFFE0] }],
                     optionalServices: [0xFFE0]
                 });
+
+                globalBluetoothDevice = device;
+                device.addEventListener('gattserverdisconnected', onDisconnected);
 
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(0xFFE0);
@@ -590,6 +609,9 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
                 
+                // ボタンの表示切り替え
+                disconnectBtn.style.display = 'inline-block';
+
                 let detectedName = (device.name && device.name.trim() !== "") ? device.name.trim() : "Unknown_Device";
                 let list = getDeviceList();
                 let map = getDeviceNamesMap();
@@ -622,6 +644,21 @@
             } catch (error) {
                 console.error(error);
                 alert("接続に失敗したか、キャンセルされました。");
+            }
+        });
+
+        // 切断ボタン
+        disconnectBtn.addEventListener('click', () => {
+            if (!globalBluetoothDevice) {
+                alert("Bluetoothデバイスに接続されていません。");
+                return;
+            }
+            if (globalBluetoothDevice.gatt.connected) {
+                globalBluetoothDevice.gatt.disconnect();
+                alert("Bluetooth通信を安全に切断しました。");
+                connectBtn.textContent = 'Bluetooth 接続';
+                disconnectBtn.style.display = 'none';
+                globalBluetoothDevice = null;
             }
         });
 
