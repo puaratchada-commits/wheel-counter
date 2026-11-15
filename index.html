@@ -31,7 +31,7 @@
             height: 100% !important;
         }
 
-        #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; border: 1px solid #e0e0e0; line-height: 1.8; }
+        #statsContainer { margin-top: 15px; font-size: 15px; background-color: #f9f9f9; padding: 12px 18px; border-radius: 8px; display: inline-block; text-align: left; border: 1px solid #e0e0e0; line-height: 1.8; width: 100%; max-width: 610px; box-sizing: border-box; }
         .device-box { background: #e3f2fd; padding: 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #90caf9; }
         .weight-box { background: #f1f8e9; padding: 8px 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #c8e6c9; }
         .import-box { background: #fff3e0; padding: 12px; border-radius: 8px; display: inline-block; margin-bottom: 10px; border: 1px solid #ffe0b2; text-align: center; }
@@ -89,7 +89,7 @@
             <!-- 動的に生成されます -->
         </select><br>
         <button id="connectBtn" style="background-color: #bbdefb; font-weight: bold; margin-top: 6px;">Bluetooth 接続</button>
-        <!-- 【追加】Bluetooth 切断ボタン -->
+        <!-- Bluetooth 切断ボタン -->
         <button id="disconnectBtn" style="background-color: #ffcdd2; font-weight: bold; margin-top: 6px; display: none;">Bluetooth 切断</button>
         <br>
         <button id="addDeviceBtn" style="font-size: 13px; padding: 6px 10px; margin-top: 6px;">＋ 新規個体を手動追加</button>
@@ -171,10 +171,16 @@
         <b>【選択個体・日の確定データ】</b><br>
         対象個体: <span id="displayDeviceName" style="color: #d32f2f; font-weight: bold;">--</span><br>
         対象日付: <span id="displayDate" style="color: #1976d2; font-weight: bold;">--</span><br>
+        運動時間帯: <span id="displayStatsTimeRange" style="color: #2e7d32; font-weight: bold;">--:-- ～ --:--</span><br>
         体重: <span id="displayWeight">--</span> g<br>
         総運動時間: <span id="totalDuration">--</span> 分<br>
         平均速度: <span id="avgSpeed">--</span> cm/s<br>
-        総回転数: <span id="totalRpm">-- 回</span>
+        総回転数: <span id="totalRpm">-- 回</span><br>
+        
+        <!-- 【追加】時刻別詳細（回転数＆運動時間）表示エリア -->
+        <div id="hourlyBreakdown" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; font-size: 13.5px; color: #444; text-align: left; line-height: 1.6;">
+            <!-- ここに時刻別データがJSで挿入されます -->
+        </div>
     </div>
 
     <!-- CSV出力用 モーダル -->
@@ -211,6 +217,18 @@
 
     <script>
         const pad2 = (n) => String(n).padStart(2, '0');
+
+        // 時間フォーマット変換（秒 → ○分○秒）
+        function formatDuration(seconds) {
+            if (!seconds || seconds <= 0) return "0秒";
+            if (seconds <= 60) {
+                return `${seconds}秒`;
+            } else {
+                const m = Math.floor(seconds / 60);
+                const s = seconds % 60;
+                return s > 0 ? `${m}分${s}秒` : `${m}分`;
+            }
+        }
 
         function normalizeDateStr(str) {
             if (!str) return "";
@@ -346,6 +364,7 @@
         });
 
         const hourlyLabels = ["12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "0:00", "1:00", "2:00", "3:00", "4:00", "5:00", "6:00", "7:00", "8:00", "9:00", "10:00", "11:00"];
+        const hLabelsShort = ["12時", "13時", "14時", "15時", "16時", "17時", "18時", "19時", "20時", "21時", "22時", "23時", "0時", "1時", "2時", "3時", "4時", "5時", "6時", "7時", "8時", "9時", "10時", "11時"];
 
         const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
         const hourlyChart = new Chart(ctxHourly, {
@@ -485,7 +504,12 @@
             const displayDateStr = normalizeDateStr(record.time);
             document.getElementById('displayDate').textContent = displayDateStr;
             document.getElementById('displayWeight').textContent = (record.weight !== undefined && record.weight !== null) ? record.weight : "--";
-            document.getElementById('displayTimeRange').textContent = record.timeRange || "--:-- ～ --:--";
+            
+            // 【変更点】確定データ枠内に「運動時間帯」を追加表示
+            const timeRangeText = record.timeRange || "--:-- ～ --:--";
+            document.getElementById('displayTimeRange').textContent = timeRangeText;
+            document.getElementById('displayStatsTimeRange').textContent = timeRangeText;
+            
             document.getElementById('totalDuration').textContent = record.duration || 0;
             document.getElementById('avgSpeed').textContent = (record.speed || 0).toFixed(1);
 
@@ -509,17 +533,36 @@
             }
 
             let hourlyData = record.hourly || new Array(24).fill(0);
+            let hourlyDurData = record.hourlyDur || new Array(24).fill(0);
+            
             hourlyChart.data.datasets[0].data = hourlyData;
             hourlyChart.update();
+
+            // 【変更点】時刻別の詳細リスト（回転数＆運動時間）を生成
+            let breakdownHTML = "<b>【時刻別 回転数・運動時間】</b><br>";
+            let hasDetail = false;
+            for (let i = 0; i < 24; i++) {
+                if (hourlyData[i] > 0) {
+                    hasDetail = true;
+                    let durText = formatDuration(hourlyDurData[i] || 0);
+                    breakdownHTML += `・${hLabelsShort[i]} : ${hourlyData[i].toLocaleString()}回 （${durText}）<br>`;
+                }
+            }
+            if (!hasDetail) {
+                breakdownHTML += "<span style='color:#888;'>・記録なし</span>";
+            }
+            document.getElementById('hourlyBreakdown').innerHTML = breakdownHTML;
         }
 
         function clearStatsAndHourly(dateStr) {
             document.getElementById('displayDate').textContent = dateStr;
             document.getElementById('displayWeight').textContent = "--";
             document.getElementById('displayTimeRange').textContent = "--:-- ～ --:--";
+            document.getElementById('displayStatsTimeRange').textContent = "--:-- ～ --:--";
             document.getElementById('totalDuration').textContent = "--";
             document.getElementById('avgSpeed').textContent = "--";
             document.getElementById('totalRpm').textContent = "-- 回";
+            document.getElementById('hourlyBreakdown').innerHTML = "";
             
             const currDateObj = parseDateString(dateStr);
             if (currDateObj) {
@@ -580,9 +623,8 @@
         const connectBtn = document.getElementById('connectBtn');
         const disconnectBtn = document.getElementById('disconnectBtn');
         let receiveBuffer = "";
-        let globalBluetoothDevice = null; // 接続中のデバイスを保持
+        let globalBluetoothDevice = null; 
 
-        // 予期せぬ切断時の処理
         function onDisconnected(event) {
             const device = event.target;
             console.log(`デバイス ${device.name} との接続が切れました。`);
@@ -591,7 +633,6 @@
             globalBluetoothDevice = null;
         }
 
-        // 接続ボタン
         connectBtn.addEventListener('click', async () => {
             try {
                 const device = await navigator.bluetooth.requestDevice({
@@ -609,7 +650,6 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
                 
-                // ボタンの表示切り替え
                 disconnectBtn.style.display = 'inline-block';
 
                 let detectedName = (device.name && device.name.trim() !== "") ? device.name.trim() : "Unknown_Device";
@@ -647,7 +687,6 @@
             }
         });
 
-        // 切断ボタン
         disconnectBtn.addEventListener('click', () => {
             if (!globalBluetoothDevice) {
                 alert("Bluetoothデバイスに接続されていません。");
@@ -673,6 +712,36 @@
             }
         }
 
+        // --- 内部パース用関数（回転数と秒数が交互に並ぶ新形式対応） ---
+        function parseBodyCols(bCols) {
+            let hArr = [];
+            let dArr = [];
+            let wVal = undefined;
+            
+            let colsToParse = bCols;
+            // 最初の要素が体重か判定（新旧フォーマット両対応）
+            if (bCols.length === 25 || bCols.length === 49 || (bCols.length > 0 && bCols.length % 2 !== 0 && bCols.length < 48)) {
+                const w = parseFloat(bCols[0]);
+                if (!isNaN(w) && w > 0) wVal = w;
+                colsToParse = bCols.slice(1);
+            }
+            
+            // 新フォーマット（回転数, 運動時間）が交互に48列ある場合
+            if (colsToParse.length >= 48) {
+                for (let h = 0; h < 24; h++) {
+                    hArr.push(parseFloat(colsToParse[h*2]) || 0);
+                    dArr.push(parseFloat(colsToParse[h*2 + 1]) || 0);
+                }
+            } else {
+                // 旧フォーマット（回転数のみ）
+                for (let h = 0; h < Math.min(colsToParse.length, 24); h++) {
+                    hArr.push(parseFloat(colsToParse[h]) || 0);
+                    dArr.push(0); // 運動時間は0とする
+                }
+            }
+            return { hArr, dArr, wVal };
+        }
+
         // CSVデータのパースと保存
         function processCSV(csvLine, targetDeviceKey = null, isBulkImport = false) {
             const values = csvLine.split(',');
@@ -687,6 +756,7 @@
             let diameterVal = undefined;
             let accumulatedRpmVal = undefined;
             let hourlyArr = [];
+            let hourlyDurArr = [];
             let weightVal = undefined;
 
             if (values.length >= 10) {
@@ -704,13 +774,10 @@
                     if (!isNaN(accRpm) && accRpm >= 0) accumulatedRpmVal = accRpm;
 
                     const bodyCols = values.slice(4, values.length - 6);
-                    if (bodyCols.length >= 25) {
-                        const w = parseFloat(bodyCols[0]);
-                        if (!isNaN(w) && w > 0) weightVal = w;
-                        for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
-                    } else {
-                        for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
-                    }
+                    const parsed = parseBodyCols(bodyCols);
+                    hourlyArr = parsed.hArr;
+                    hourlyDurArr = parsed.dArr;
+                    if (parsed.wVal !== undefined) weightVal = parsed.wVal;
                 }
             }
 
@@ -727,24 +794,22 @@
                     if (!isNaN(d) && d > 0) diameterVal = d;
 
                     const bodyCols = values.slice(4, values.length - 5);
-                    if (bodyCols.length >= 25) {
-                        const w = parseFloat(bodyCols[0]);
-                        if (!isNaN(w) && w > 0) weightVal = w;
-                        for (let h = 1; h <= 24; h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
-                    } else {
-                        for (let h = 0; h < Math.min(bodyCols.length, 24); h++) hourlyArr.push(parseFloat(bodyCols[h]) || 0);
-                    }
+                    const parsed = parseBodyCols(bodyCols);
+                    hourlyArr = parsed.hArr;
+                    hourlyDurArr = parsed.dArr;
+                    if (parsed.wVal !== undefined) weightVal = parsed.wVal;
                 }
             }
 
             if (hourlyArr.length === 0) {
-                const w = parseFloat(values[4]);
-                if (!isNaN(w) && w > 0) weightVal = w;
-                for (let i = 5; i < Math.min(values.length, 29); i++) {
-                    hourlyArr.push(parseFloat(values[i]) || 0);
-                }
+                const fallbackCols = values.slice(4);
+                const parsed = parseBodyCols(fallbackCols);
+                hourlyArr = parsed.hArr;
+                hourlyDurArr = parsed.dArr;
+                if (parsed.wVal !== undefined) weightVal = parsed.wVal;
             }
             while (hourlyArr.length < 24) hourlyArr.push(0);
+            while (hourlyDurArr.length < 24) hourlyDurArr.push(0);
 
             if (!dateValue || isNaN(rpmValue)) return; 
 
@@ -769,6 +834,7 @@
                 history[existingIndex].duration = timeValue;
                 if (weightVal !== undefined && !isNaN(weightVal)) { history[existingIndex].weight = weightVal; }
                 history[existingIndex].hourly = hourlyArr;
+                history[existingIndex].hourlyDur = hourlyDurArr;
                 if (timeRangeStr) history[existingIndex].timeRange = timeRangeStr;
                 if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
                 if (accumulatedRpmVal !== undefined) history[existingIndex].accumulatedRpm = accumulatedRpmVal;
@@ -776,7 +842,8 @@
                 history.push({ 
                     time: dateValue, rpm: rpmValue, speed: speedValue, duration: timeValue, 
                     weight: (weightVal !== undefined && !isNaN(weightVal)) ? weightVal : undefined, 
-                    hourly: hourlyArr, timeRange: timeRangeStr, diameter: diameterVal, accumulatedRpm: accumulatedRpmVal
+                    hourly: hourlyArr, hourlyDur: hourlyDurArr, 
+                    timeRange: timeRangeStr, diameter: diameterVal, accumulatedRpm: accumulatedRpmVal
                 });
                 if (history.length > 10000) history.shift();
             }
@@ -802,7 +869,7 @@
             if (existingIndex !== -1) {
                 history[existingIndex].weight = weightVal;
             } else {
-                history.push({ time: targetDateStr, rpm: 0, speed: 0, duration: 0, weight: weightVal, hourly: new Array(24).fill(0), timeRange: "" });
+                history.push({ time: targetDateStr, rpm: 0, speed: 0, duration: 0, weight: weightVal, hourly: new Array(24).fill(0), hourlyDur: new Array(24).fill(0), timeRange: "" });
             }
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
             localStorage.setItem(getStorageKey(), JSON.stringify(history));
@@ -812,9 +879,7 @@
 
         // 共通CSVインポート処理ロジック
         function executeBulkCsvImport(text) {
-            // Excelからのコピペ（タブ区切り）をカンマに自動変換
             text = text.replace(/\t/g, ',');
-
             const lines = text.split(/\r\n|\n/);
             if (lines.length === 0) return 0;
             
@@ -822,9 +887,8 @@
             const hasBleAndName = headerCols.length > 1 && headerCols[0].includes("Bluetooth") && headerCols[1].includes("個体名");
             const hasOnlyDeviceCol = !hasBleAndName && (headerCols[0].includes("個体名") || headerCols[0].includes("デバイス"));
             
-            // 1行目が見出し（ヘッダー）か、データ本体かを自動判定
             const isHeader = lines[0].includes("日付") || lines[0].includes("回転数") || lines[0].includes("Bluetooth");
-            const startIndex = isHeader ? 1 : 0; // 見出しがなければ1行目(0)から取り込む
+            const startIndex = isHeader ? 1 : 0; 
             
             let importedCount = 0;
             for (let i = startIndex; i < lines.length; i++) {
@@ -870,7 +934,6 @@
             updateDeviceSelectOptions(getCurrentDeviceKey());
             renderRecentData(50);
             
-            // スマホでのグラフ縮小バグ防止のため、明示的にサイズを再計算させる
             setTimeout(() => {
                 wheelChart.resize();
                 hourlyChart.resize();
@@ -879,7 +942,6 @@
             return importedCount;
         }
 
-        // ファイルからのインポート
         document.getElementById('importCsvFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -892,7 +954,6 @@
             reader.readAsText(file, 'UTF-8');
         });
 
-        // テキストからのインポート モーダル処理
         document.getElementById('importTextBtn').addEventListener('click', () => {
             document.getElementById('importTextArea').value = "";
             document.getElementById('importModal').style.display = 'block';
@@ -913,7 +974,6 @@
             document.getElementById('importModal').style.display = 'none';
         });
 
-        // グラフ項目切り替え
         document.getElementById('barTargetSelect').addEventListener('change', (e) => {
             const selectedIndex = parseInt(e.target.value);
             wheelChart.data.datasets.forEach((ds, index) => {
@@ -926,7 +986,6 @@
             wheelChart.update();
         });
 
-        // 日付移動
         const dateFilter = document.getElementById('dateFilter');
         function showDateDataAndAround(targetDateStr) {
             const normDate = normalizeDateStr(targetDateStr);
@@ -956,7 +1015,6 @@
         document.getElementById('nextDayBtn').addEventListener('click', () => shiftDate(1));
         document.getElementById('resetBtn').addEventListener('click', () => { renderRecentData(50); });
 
-        // --- CSVモーダル（ポップアップ）関連処理 ---
         let currentCsvString = "";
         let currentCsvFilename = "data.csv";
 
@@ -995,13 +1053,16 @@
             URL.revokeObjectURL(link.href);
         });
 
-        // 選択個体エクスポート
+        // 選択個体エクスポート（新フォーマット対応）
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
             history.sort((a, b) => new Date(a.time) - new Date(b.time));
 
-            let csvContent = "Bluetooth名,個体名(表示名),日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
+            let csvContent = "Bluetooth名,個体名(表示名),日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g)";
+            hLabelsShort.forEach(l => { csvContent += `,${l},${l}運動(秒)`; });
+            csvContent += ",開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
+            
             const currentDevKey = getCurrentDeviceKey();
             const map = getDeviceNamesMap();
             const customName = map[currentDevKey] || currentDevKey;
@@ -1010,7 +1071,8 @@
                 const w = item.weight !== undefined && item.weight !== null ? item.weight : "";
                 let hourlyStr = "";
                 let arr = item.hourly || new Array(24).fill(0);
-                for (let h = 0; h < 24; h++) { hourlyStr += `,${arr[h] || 0}`; }
+                let durArr = item.hourlyDur || new Array(24).fill(0);
+                for (let h = 0; h < 24; h++) { hourlyStr += `,${arr[h] || 0},${durArr[h] || 0}`; }
 
                 let timeCols = ["", "", "", ""];
                 if (item.timeRange && item.timeRange.includes("～")) {
@@ -1030,7 +1092,7 @@
             showCsvModal(csvContent, filename);
         });
 
-        // 全個体エクスポート
+        // 全個体エクスポート（新フォーマット対応）
         document.getElementById('downloadAllCsvBtn').addEventListener('click', () => {
             const validOptions = Array.from(document.getElementById('deviceSelect').options).map(opt => opt.value);
             const map = getDeviceNamesMap();
@@ -1050,13 +1112,16 @@
                 return a.devKey.localeCompare(b.devKey);
             });
 
-            let csvContent = "Bluetooth名,個体名(表示名),日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g),12時,13時,14時,15時,16時,17時,18時,19時,20時,21時,22時,23時,0時,1時,2時,3時,4時,5時,6時,7時,8時,9時,10時,11時,開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
+            let csvContent = "Bluetooth名,個体名(表示名),日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g)";
+            hLabelsShort.forEach(l => { csvContent += `,${l},${l}運動(秒)`; });
+            csvContent += ",開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
 
             allHistory.forEach(item => {
                 const w = item.weight !== undefined && item.weight !== null ? item.weight : "";
                 let hourlyStr = "";
                 let arr = item.hourly || new Array(24).fill(0);
-                for (let h = 0; h < 24; h++) { hourlyStr += `,${arr[h] || 0}`; }
+                let durArr = item.hourlyDur || new Array(24).fill(0);
+                for (let h = 0; h < 24; h++) { hourlyStr += `,${arr[h] || 0},${durArr[h] || 0}`; }
 
                 let timeCols = ["", "", "", ""];
                 if (item.timeRange && item.timeRange.includes("～")) {
