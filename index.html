@@ -39,8 +39,8 @@
         
         .accumulated-box {
             width: 100%;
-            max-width: 650px;
-            margin: -5px auto 15px auto;
+            max-width: 610px;
+            margin: 15px auto;
             background: #fff8e1;
             padding: 10px 15px;
             border-radius: 8px;
@@ -142,10 +142,6 @@
         </div>
     </div>
 
-    <!-- 【日付ごとの推移】グラフ下の累計表示エリア -->
-    <div class="accumulated-box">
-        <b>【本体累計記録】</b> 累計回転数: <span id="displayAccumulatedRpm" style="font-weight: bold; color: #d32f2f;">-- 回</span>
-    </div>
     <!-- 12時〜翌11時 時間帯別分布グラフ -->
     <div class="chart-box">
         <h3 id="hourlyTitle">【24時間分布】</h3>
@@ -177,10 +173,15 @@
         平均速度: <span id="avgSpeed">--</span> cm/s<br>
         総回転数: <span id="totalRpm">-- 回</span><br>
         
-        <!-- 【追加】時刻別詳細（回転数＆運動時間）表示エリア -->
+        <!-- 時刻別詳細（回転数＆運動時間）表示エリア -->
         <div id="hourlyBreakdown" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; font-size: 13.5px; color: #444; text-align: left; line-height: 1.6;">
             <!-- ここに時刻別データがJSで挿入されます -->
         </div>
+    </div>
+
+    <!-- 【変更】選択個体・日の確定データの下に移動した累計表示エリア -->
+    <div class="accumulated-box">
+        <b>【本体累計記録】</b> 累計回転数: <span id="displayAccumulatedRpm" style="font-weight: bold; color: #d32f2f;">-- 回</span>
     </div>
 
     <!-- CSV出力用 モーダル -->
@@ -505,7 +506,6 @@
             document.getElementById('displayDate').textContent = displayDateStr;
             document.getElementById('displayWeight').textContent = (record.weight !== undefined && record.weight !== null) ? record.weight : "--";
             
-            // 【変更点】確定データ枠内に「運動時間帯」を追加表示
             const timeRangeText = record.timeRange || "--:-- ～ --:--";
             document.getElementById('displayTimeRange').textContent = timeRangeText;
             document.getElementById('displayStatsTimeRange').textContent = timeRangeText;
@@ -538,7 +538,6 @@
             hourlyChart.data.datasets[0].data = hourlyData;
             hourlyChart.update();
 
-            // 【変更点】時刻別の詳細リスト（回転数＆運動時間）を生成
             let breakdownHTML = "<b>【時刻別 回転数・運動時間】</b><br>";
             let hasDetail = false;
             for (let i = 0; i < 24; i++) {
