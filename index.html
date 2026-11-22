@@ -52,6 +52,24 @@
         }
         .accumulated-box b { color: #b78103; }
 
+        /* 最高記録表示ボックス */
+        .record-box {
+            width: 100%;
+            max-width: 610px;
+            margin: 12px auto 20px auto;
+            background: #fce4ec;
+            padding: 12px 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            border: 1px solid #f8bbd0;
+            box-sizing: border-box;
+            font-size: 14.5px;
+            color: #333;
+            text-align: left;
+            line-height: 1.8;
+        }
+        .record-box b.title { color: #c2185b; display: block; margin-bottom: 4px; font-size: 15px; }
+
         .hourly-header-row {
             display: flex;
             align-items: center;
@@ -183,6 +201,13 @@
         <b>【本体累計記録】</b> 累計回転数: <span id="displayAccumulatedRpm" style="font-weight: bold; color: #d32f2f;">-- 回</span>
     </div>
 
+    <!-- 最下段: 最高記録表示エリア -->
+    <div id="recordContainer" class="record-box">
+        <b class="title">【最高記録】</b>
+        最高回転数（1日）: <span id="displayMaxRpmRecord" style="font-weight: bold; color: #ad1457;">--</span><br>
+        最高平均速度（1日）: <span id="displayMaxSpeedRecord" style="font-weight: bold; color: #ad1457;">--</span>
+    </div>
+
     <!-- CSV出力用 モーダル -->
     <div id="csvModal" class="modal-overlay">
         <div class="modal-content">
@@ -243,6 +268,12 @@
                 }
             }
             return cleaned;
+        }
+
+        // yyyy-mm-dd または yyyy/mm/dd 形式かどうか判定
+        function isValidDateFormat(str) {
+            if (!str) return false;
+            return /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(str.trim());
         }
 
         function parseDateString(dateStr) {
@@ -347,7 +378,7 @@
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false, // スマホ表示時に高さが潰れないように設定
+                maintainAspectRatio: false,
                 onClick: (event, elements) => {
                     if (elements && elements.length > 0) {
                         const index = elements[0].index;
@@ -409,7 +440,7 @@
                 clearStatsAndHourly("--");
                 document.getElementById('dateFilter').value = "";
             }
-            updateLatestAccumulatedDisplay(history);
+            updateLatestAccumulatedAndRecordsDisplay(history);
         }
 
         function renderDataAroundDate(targetDateStr, limit = 50) {
@@ -446,22 +477,39 @@
             } else {
                 clearStatsAndHourly(normalizedTarget + " (データなし)");
             }
-            updateLatestAccumulatedDisplay(history);
+            updateLatestAccumulatedAndRecordsDisplay(history);
         }
 
-        function updateLatestAccumulatedDisplay(history) {
+        // 累計回転数および最高記録（最高回転数・最高平均速度）の表示更新
+        function updateLatestAccumulatedAndRecordsDisplay(history) {
             let latestAccRpm = undefined;
             let latestDiameter = undefined;
+
+            // 最高記録用変数（受信データの記録を優先し、なければ履歴内の最大値からフォールバック算出）
+            let bestRpmDate = "";
+            let bestRpmVal = undefined;
+            let bestSpeedDate = "";
+            let bestSpeedVal = undefined;
+
             for (let i = history.length - 1; i >= 0; i--) {
-                if (latestAccRpm === undefined && history[i].accumulatedRpm !== undefined && history[i].accumulatedRpm !== null) {
-                    latestAccRpm = history[i].accumulatedRpm;
+                const item = history[i];
+                if (latestAccRpm === undefined && item.accumulatedRpm !== undefined && item.accumulatedRpm !== null) {
+                    latestAccRpm = item.accumulatedRpm;
                 }
-                if (latestDiameter === undefined && history[i].diameter !== undefined && history[i].diameter > 0) {
-                    latestDiameter = history[i].diameter;
+                if (latestDiameter === undefined && item.diameter !== undefined && item.diameter > 0) {
+                    latestDiameter = item.diameter;
                 }
-                if (latestAccRpm !== undefined && latestDiameter !== undefined) break;
+                if (bestRpmVal === undefined && item.maxRpm !== undefined && item.maxRpm !== null && !isNaN(item.maxRpm)) {
+                    bestRpmVal = item.maxRpm;
+                    bestRpmDate = item.maxRpmDate || "";
+                }
+                if (bestSpeedVal === undefined && item.maxSpeed !== undefined && item.maxSpeed !== null && !isNaN(item.maxSpeed)) {
+                    bestSpeedVal = item.maxSpeed;
+                    bestSpeedDate = item.maxSpeedDate || "";
+                }
             }
 
+            // 累計表示
             const targetEl = document.getElementById('displayAccumulatedRpm');
             if (latestAccRpm !== undefined && latestAccRpm !== null) {
                 let text = `${Number(latestAccRpm).toLocaleString()} 回`;
@@ -472,6 +520,31 @@
                 targetEl.textContent = text;
             } else {
                 targetEl.textContent = "-- 回";
+            }
+
+            // 最高回転数表示（走行距離 m 計算）
+            const maxRpmEl = document.getElementById('displayMaxRpmRecord');
+            if (bestRpmVal !== undefined && bestRpmVal !== null) {
+                const datePrefix = bestRpmDate ? `${normalizeDateStr(bestRpmDate)} : ` : "";
+                let rpmStr = `${datePrefix}${Number(bestRpmVal).toLocaleString()} 回`;
+                if (latestDiameter && latestDiameter > 0) {
+                    const distMeter = (bestRpmVal * Math.PI * (latestDiameter / 100)).toFixed(1);
+                    rpmStr += `（走行距離: ${Number(distMeter).toLocaleString()} m）`;
+                }
+                maxRpmEl.textContent = rpmStr;
+            } else {
+                maxRpmEl.textContent = "--";
+            }
+
+            // 最高平均速度表示（cm/s と km/h 計算）
+            const maxSpeedEl = document.getElementById('displayMaxSpeedRecord');
+            if (bestSpeedVal !== undefined && bestSpeedVal !== null) {
+                const datePrefix = bestSpeedDate ? `${normalizeDateStr(bestSpeedDate)} : ` : "";
+                const speedCmSec = Number(bestSpeedVal);
+                const speedKmH = (speedCmSec * 0.036).toFixed(2);
+                maxSpeedEl.textContent = `${datePrefix}${speedCmSec.toFixed(1)} cm/s（${speedKmH} km/h）`;
+            } else {
+                maxSpeedEl.textContent = "--";
             }
         }
 
@@ -537,7 +610,6 @@
             hourlyChart.data.datasets[0].data = hourlyData;
             hourlyChart.update();
 
-            // 【変更】時刻と桁を綺麗に揃えるレイアウト調整
             let breakdownHTML = "<b style='display:block; margin-bottom:6px;'>【時刻別 回転数・運動時間】</b>";
             let hasDetail = false;
             for (let i = 0; i < 24; i++) {
@@ -723,38 +795,58 @@
             let wVal = undefined;
             
             let colsToParse = bCols;
-            // 最初の要素が体重か判定（新旧フォーマット両対応）
             if (bCols.length === 25 || bCols.length === 49 || (bCols.length > 0 && bCols.length % 2 !== 0 && bCols.length < 48)) {
                 const w = parseFloat(bCols[0]);
                 if (!isNaN(w) && w > 0) wVal = w;
                 colsToParse = bCols.slice(1);
             }
             
-            // 新フォーマット（回転数, 運動時間）が交互に48列ある場合
             if (colsToParse.length >= 48) {
                 for (let h = 0; h < 24; h++) {
                     hArr.push(parseFloat(colsToParse[h*2]) || 0);
                     dArr.push(parseFloat(colsToParse[h*2 + 1]) || 0);
                 }
             } else {
-                // 旧フォーマット（回転数のみ）
                 for (let h = 0; h < Math.min(colsToParse.length, 24); h++) {
                     hArr.push(parseFloat(colsToParse[h]) || 0);
-                    dArr.push(0); // 運動時間は0とする
+                    dArr.push(0);
                 }
             }
             return { hArr, dArr, wVal };
         }
 
-        // CSVデータのパースと保存
+        // CSVデータのパースと保存（末尾の最高記録4項目対応）
         function processCSV(csvLine, targetDeviceKey = null, isBulkImport = false) {
-            const values = csvLine.split(',');
+            let values = csvLine.split(',');
             if (values.length < 5) return; 
 
             const dateValue = normalizeDateStr(values[0]);
             const rpmValue = parseFloat(values[1]);
             const speedValue = parseFloat(values[2]);
             const timeValue = parseFloat(values[3]);
+
+            // 最後尾に最高記録4項目（yyyy-mm-dd,最高回転数,yyyy-mm-dd,最高平均速度）が付いているか判定
+            let maxRpmDateVal = "";
+            let maxRpmVal = undefined;
+            let maxSpeedDateVal = "";
+            let maxSpeedVal = undefined;
+
+            if (values.length >= 14) {
+                const tail4 = values.slice(-4);
+                const d1 = tail4[0] ? tail4[0].trim() : "";
+                const v1 = tail4[1] !== "" ? parseFloat(tail4[1]) : NaN;
+                const d2 = tail4[2] ? tail4[2].trim() : "";
+                const v2 = tail4[3] !== "" ? parseFloat(tail4[3]) : NaN;
+
+                if (isValidDateFormat(d1) && !isNaN(v1) && isValidDateFormat(d2) && !isNaN(v2)) {
+                    maxRpmDateVal = normalizeDateStr(d1);
+                    maxRpmVal = v1;
+                    maxSpeedDateVal = normalizeDateStr(d2);
+                    maxSpeedVal = v2;
+                    // 最高記録4列を除いた部分を以降の解析に使用
+                    values = values.slice(0, values.length - 4);
+                }
+            }
 
             let timeRangeStr = "";
             let diameterVal = undefined;
@@ -842,12 +934,22 @@
                 if (timeRangeStr) history[existingIndex].timeRange = timeRangeStr;
                 if (diameterVal !== undefined) history[existingIndex].diameter = diameterVal;
                 if (accumulatedRpmVal !== undefined) history[existingIndex].accumulatedRpm = accumulatedRpmVal;
+                if (maxRpmVal !== undefined) {
+                    history[existingIndex].maxRpmDate = maxRpmDateVal;
+                    history[existingIndex].maxRpm = maxRpmVal;
+                }
+                if (maxSpeedVal !== undefined) {
+                    history[existingIndex].maxSpeedDate = maxSpeedDateVal;
+                    history[existingIndex].maxSpeed = maxSpeedVal;
+                }
             } else {
                 history.push({ 
                     time: dateValue, rpm: rpmValue, speed: speedValue, duration: timeValue, 
                     weight: (weightVal !== undefined && !isNaN(weightVal)) ? weightVal : undefined, 
                     hourly: hourlyArr, hourlyDur: hourlyDurArr, 
-                    timeRange: timeRangeStr, diameter: diameterVal, accumulatedRpm: accumulatedRpmVal
+                    timeRange: timeRangeStr, diameter: diameterVal, accumulatedRpm: accumulatedRpmVal,
+                    maxRpmDate: maxRpmDateVal, maxRpm: maxRpmVal,
+                    maxSpeedDate: maxSpeedDateVal, maxSpeed: maxSpeedVal
                 });
                 if (history.length > 10000) history.shift();
             }
@@ -1057,7 +1159,7 @@
             URL.revokeObjectURL(link.href);
         });
 
-        // 選択個体エクスポート（新フォーマット対応）
+        // 選択個体エクスポート（新フォーマット＋最高記録対応）
         document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             let history = JSON.parse(localStorage.getItem(getStorageKey())) || [];
             if (history.length === 0) { alert("保存するデータがありません。"); return; }
@@ -1065,7 +1167,7 @@
 
             let csvContent = "Bluetooth名,個体名(表示名),日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g)";
             hLabelsShort.forEach(l => { csvContent += `,${l},${l}運動(秒)`; });
-            csvContent += ",開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
+            csvContent += ",開始時,開始分,終了時,終了分,直径(cm),累計回転数(回),最高回転数記録日,最高回転数(回),最高平均速度記録日,最高平均速度(cm/s)\r\n";
             
             const currentDevKey = getCurrentDeviceKey();
             const map = getDeviceNamesMap();
@@ -1086,7 +1188,12 @@
 
                 const diameterStr = item.diameter !== undefined && item.diameter !== null ? item.diameter : "";
                 const accRpmStr = item.accumulatedRpm !== undefined && item.accumulatedRpm !== null ? item.accumulatedRpm : "";
-                csvContent += `${currentDevKey},${customName},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr}\r\n`;
+                const maxRpmDateStr = item.maxRpmDate ? normalizeDateStr(item.maxRpmDate) : "";
+                const maxRpmStr = item.maxRpm !== undefined && item.maxRpm !== null ? item.maxRpm : "";
+                const maxSpeedDateStr = item.maxSpeedDate ? normalizeDateStr(item.maxSpeedDate) : "";
+                const maxSpeedStr = item.maxSpeed !== undefined && item.maxSpeed !== null ? item.maxSpeed : "";
+
+                csvContent += `${currentDevKey},${customName},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr},${maxRpmDateStr},${maxRpmStr},${maxSpeedDateStr},${maxSpeedStr}\r\n`;
             });
 
             const today = formatDateString(new Date());
@@ -1096,7 +1203,7 @@
             showCsvModal(csvContent, filename);
         });
 
-        // 全個体エクスポート（新フォーマット対応）
+        // 全個体エクスポート（新フォーマット＋最高記録対応）
         document.getElementById('downloadAllCsvBtn').addEventListener('click', () => {
             const validOptions = Array.from(document.getElementById('deviceSelect').options).map(opt => opt.value);
             const map = getDeviceNamesMap();
@@ -1118,7 +1225,7 @@
 
             let csvContent = "Bluetooth名,個体名(表示名),日付,回転数(回),平均速度(cm/s),運動時間(分),体重(g)";
             hLabelsShort.forEach(l => { csvContent += `,${l},${l}運動(秒)`; });
-            csvContent += ",開始時,開始分,終了時,終了分,直径(cm),累計回転数(回)\r\n";
+            csvContent += ",開始時,開始分,終了時,終了分,直径(cm),累計回転数(回),最高回転数記録日,最高回転数(回),最高平均速度記録日,最高平均速度(cm/s)\r\n";
 
             allHistory.forEach(item => {
                 const w = item.weight !== undefined && item.weight !== null ? item.weight : "";
@@ -1135,7 +1242,12 @@
 
                 const diameterStr = item.diameter !== undefined && item.diameter !== null ? item.diameter : "";
                 const accRpmStr = item.accumulatedRpm !== undefined && item.accumulatedRpm !== null ? item.accumulatedRpm : "";
-                csvContent += `${item.devKey},${item.customName},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr}\r\n`;
+                const maxRpmDateStr = item.maxRpmDate ? normalizeDateStr(item.maxRpmDate) : "";
+                const maxRpmStr = item.maxRpm !== undefined && item.maxRpm !== null ? item.maxRpm : "";
+                const maxSpeedDateStr = item.maxSpeedDate ? normalizeDateStr(item.maxSpeedDate) : "";
+                const maxSpeedStr = item.maxSpeed !== undefined && item.maxSpeed !== null ? item.maxSpeed : "";
+
+                csvContent += `${item.devKey},${item.customName},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr},${maxRpmDateStr},${maxRpmStr},${maxSpeedDateStr},${maxSpeedStr}\r\n`;
             });
 
             const today = formatDateString(new Date());
