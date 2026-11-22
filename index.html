@@ -201,9 +201,9 @@
         <b>【本体累計記録】</b> 累計回転数: <span id="displayAccumulatedRpm" style="font-weight: bold; color: #d32f2f;">-- 回</span>
     </div>
 
-    <!-- 最下段: 最高記録表示エリア -->
+    <!-- 最下段: 選択日時点の最高記録表示エリア -->
     <div id="recordContainer" class="record-box">
-        <b class="title">【最高記録】</b>
+        <b class="title" id="recordTitle">【最高記録】</b>
         最高回転数（1日）: <span id="displayMaxRpmRecord" style="font-weight: bold; color: #ad1457;">--</span><br>
         最高平均速度（1日）: <span id="displayMaxSpeedRecord" style="font-weight: bold; color: #ad1457;">--</span>
     </div>
@@ -436,11 +436,12 @@
                 const latest = recentData[recentData.length - 1];
                 updateStatsAndHourly(latest);
                 document.getElementById('dateFilter').value = normalizeDateStr(latest.time);
+                updateLatestAccumulatedAndRecordsDisplay(history, normalizeDateStr(latest.time));
             } else {
                 clearStatsAndHourly("--");
                 document.getElementById('dateFilter').value = "";
+                updateLatestAccumulatedAndRecordsDisplay(history, null);
             }
-            updateLatestAccumulatedAndRecordsDisplay(history);
         }
 
         function renderDataAroundDate(targetDateStr, limit = 50) {
@@ -477,20 +478,15 @@
             } else {
                 clearStatsAndHourly(normalizedTarget + " (データなし)");
             }
-            updateLatestAccumulatedAndRecordsDisplay(history);
+            updateLatestAccumulatedAndRecordsDisplay(history, normalizedTarget);
         }
 
-        // 累計回転数および最高記録（最高回転数・最高平均速度）の表示更新
-        function updateLatestAccumulatedAndRecordsDisplay(history) {
+        // 累計回転数（最新値）と、選択日付時点での最高記録（最高回転数・最高平均速度）の表示更新
+        function updateLatestAccumulatedAndRecordsDisplay(history, targetDateStr) {
             let latestAccRpm = undefined;
             let latestDiameter = undefined;
 
-            // 最高記録用変数（受信データの記録を優先し、なければ履歴内の最大値からフォールバック算出）
-            let bestRpmDate = "";
-            let bestRpmVal = undefined;
-            let bestSpeedDate = "";
-            let bestSpeedVal = undefined;
-
+            // 全履歴から最新の累計回転数と回し車直径を取得
             for (let i = history.length - 1; i >= 0; i--) {
                 const item = history[i];
                 if (latestAccRpm === undefined && item.accumulatedRpm !== undefined && item.accumulatedRpm !== null) {
@@ -499,14 +495,7 @@
                 if (latestDiameter === undefined && item.diameter !== undefined && item.diameter > 0) {
                     latestDiameter = item.diameter;
                 }
-                if (bestRpmVal === undefined && item.maxRpm !== undefined && item.maxRpm !== null && !isNaN(item.maxRpm)) {
-                    bestRpmVal = item.maxRpm;
-                    bestRpmDate = item.maxRpmDate || "";
-                }
-                if (bestSpeedVal === undefined && item.maxSpeed !== undefined && item.maxSpeed !== null && !isNaN(item.maxSpeed)) {
-                    bestSpeedVal = item.maxSpeed;
-                    bestSpeedDate = item.maxSpeedDate || "";
-                }
+                if (latestAccRpm !== undefined && latestDiameter !== undefined) break;
             }
 
             // 累計表示
@@ -522,13 +511,92 @@
                 targetEl.textContent = "-- 回";
             }
 
-            // 最高回転数表示（走行距離 m 計算）
+            // 選択日付（targetDateStr）時点での最高記録を抽出
+            const recordTitleEl = document.getElementById('recordTitle');
             const maxRpmEl = document.getElementById('displayMaxRpmRecord');
+            const maxSpeedEl = document.getElementById('displayMaxSpeedRecord');
+
+            if (!targetDateStr || history.length === 0) {
+                recordTitleEl.textContent = "【最高記録】";
+                maxRpmEl.textContent = "--";
+                maxSpeedEl.textContent = "--";
+                return;
+            }
+
+            recordTitleEl.textContent = `【最高記録（${targetDateStr} 時点）】`;
+
+            // 選択日付そのもののレコードを探す
+            const targetRecord = history.find(item => normalizeDateStr(item.time) === targetDateStr);
+            
+            // 選択日時点の直径を取得（その日のレコードにあれば優先、なければそれ以前の最新直径）
+            let diameterAtDate = (targetRecord && targetRecord.diameter > 0) ? targetRecord.diameter : latestDiameter;
+            if (!diameterAtDate) {
+                for (let i = history.length - 1; i >= 0; i--) {
+                    if (normalizeDateStr(history[i].time) <= targetDateStr && history[i].diameter > 0) {
+                        diameterAtDate = history[i].diameter;
+                        break;
+                    }
+                }
+            }
+
+            let bestRpmDate = "";
+            let bestRpmVal = undefined;
+            let bestSpeedDate = "";
+            let bestSpeedVal = undefined;
+
+            // 1. 選択日のレコードに受信データ由来の最高記録があればそれを優先表示
+            if (targetRecord) {
+                if (targetRecord.maxRpm !== undefined && targetRecord.maxRpm !== null && !isNaN(targetRecord.maxRpm)) {
+                    bestRpmVal = targetRecord.maxRpm;
+                    bestRpmDate = targetRecord.maxRpmDate || "";
+                }
+                if (targetRecord.maxSpeed !== undefined && targetRecord.maxSpeed !== null && !isNaN(targetRecord.maxSpeed)) {
+                    bestSpeedVal = targetRecord.maxSpeed;
+                    bestSpeedDate = targetRecord.maxSpeedDate || "";
+                }
+            }
+
+            // 2. 選択日のレコードに最高記録データが含まれていない場合（過去の未記録データやデータなし日など）は、
+            //    その日以前（<= targetDateStr）の履歴からその時点の最高値を算出して補完表示
+            if (bestRpmVal === undefined || bestSpeedVal === undefined) {
+                for (let i = 0; i < history.length; i++) {
+                    const item = history[i];
+                    const itemDate = normalizeDateStr(item.time);
+                    if (itemDate > targetDateStr) break;
+
+                    // 過去のレコードに記録された最高記録があれば引き継ぐ
+                    if (item.maxRpm !== undefined && item.maxRpm !== null && !isNaN(item.maxRpm)) {
+                        if (bestRpmVal === undefined || item.maxRpm >= bestRpmVal) {
+                            bestRpmVal = item.maxRpm;
+                            bestRpmDate = item.maxRpmDate || itemDate;
+                        }
+                    } else if (item.rpm !== undefined && !isNaN(item.rpm) && item.rpm > 0) {
+                        if (bestRpmVal === undefined || item.rpm > bestRpmVal) {
+                            bestRpmVal = item.rpm;
+                            bestRpmDate = itemDate;
+                        }
+                    }
+
+                    if (item.maxSpeed !== undefined && item.maxSpeed !== null && !isNaN(item.maxSpeed)) {
+                        if (bestSpeedVal === undefined || item.maxSpeed >= bestSpeedVal) {
+                            bestSpeedVal = item.maxSpeed;
+                            bestSpeedDate = item.maxSpeedDate || itemDate;
+                        }
+                    } else if (item.speed !== undefined && !isNaN(item.speed) && item.speed > 0) {
+                        if (bestSpeedVal === undefined || item.speed > bestSpeedVal) {
+                            bestSpeedVal = item.speed;
+                            bestSpeedDate = itemDate;
+                        }
+                    }
+                }
+            }
+
+            // 最高回転数表示（走行距離 m 計算）
             if (bestRpmVal !== undefined && bestRpmVal !== null) {
                 const datePrefix = bestRpmDate ? `${normalizeDateStr(bestRpmDate)} : ` : "";
                 let rpmStr = `${datePrefix}${Number(bestRpmVal).toLocaleString()} 回`;
-                if (latestDiameter && latestDiameter > 0) {
-                    const distMeter = (bestRpmVal * Math.PI * (latestDiameter / 100)).toFixed(1);
+                if (diameterAtDate && diameterAtDate > 0) {
+                    const distMeter = (bestRpmVal * Math.PI * (diameterAtDate / 100)).toFixed(1);
                     rpmStr += `（走行距離: ${Number(distMeter).toLocaleString()} m）`;
                 }
                 maxRpmEl.textContent = rpmStr;
@@ -537,7 +605,6 @@
             }
 
             // 最高平均速度表示（cm/s と km/h 計算）
-            const maxSpeedEl = document.getElementById('displayMaxSpeedRecord');
             if (bestSpeedVal !== undefined && bestSpeedVal !== null) {
                 const datePrefix = bestSpeedDate ? `${normalizeDateStr(bestSpeedDate)} : ` : "";
                 const speedCmSec = Number(bestSpeedVal);
