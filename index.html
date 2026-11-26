@@ -264,16 +264,17 @@
                 const m = parseInt(parts[1], 10);
                 const d = parseInt(parts[2], 10);
                 if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+                    if (y === 0 && m === 0 && d === 0) return "";
                     return `${y}-${pad2(m)}-${pad2(d)}`;
                 }
             }
             return cleaned;
         }
 
-        // yyyy-mm-dd または yyyy/mm/dd 形式かどうか判定
+        // yyyy-mm-dd または 0-0-0 形式かどうか判定
         function isValidDateFormat(str) {
             if (!str) return false;
-            return /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(str.trim());
+            return /^\d{1,4}[-/]\d{1,2}[-/]\d{1,2}$/.test(str.trim());
         }
 
         function parseDateString(dateStr) {
@@ -544,19 +545,19 @@
             let bestSpeedDate = "";
             let bestSpeedVal = undefined;
 
-            // 1. 選択日のレコードに受信データ由来の最高記録があればそれを優先表示
+            // 1. 選択日のレコードに受信データ由来の有効な最高記録（> 0）があればそれを優先表示
             if (targetRecord) {
-                if (targetRecord.maxRpm !== undefined && targetRecord.maxRpm !== null && !isNaN(targetRecord.maxRpm)) {
+                if (targetRecord.maxRpm !== undefined && targetRecord.maxRpm !== null && !isNaN(targetRecord.maxRpm) && targetRecord.maxRpm > 0) {
                     bestRpmVal = targetRecord.maxRpm;
                     bestRpmDate = targetRecord.maxRpmDate || "";
                 }
-                if (targetRecord.maxSpeed !== undefined && targetRecord.maxSpeed !== null && !isNaN(targetRecord.maxSpeed)) {
+                if (targetRecord.maxSpeed !== undefined && targetRecord.maxSpeed !== null && !isNaN(targetRecord.maxSpeed) && targetRecord.maxSpeed > 0) {
                     bestSpeedVal = targetRecord.maxSpeed;
                     bestSpeedDate = targetRecord.maxSpeedDate || "";
                 }
             }
 
-            // 2. 選択日のレコードに最高記録データが含まれていない場合（過去の未記録データやデータなし日など）は、
+            // 2. 選択日のレコードに最高記録データが含まれていない場合（0-0-0,0 の場合や過去データ）は、
             //    その日以前（<= targetDateStr）の履歴からその時点の最高値を算出して補完表示
             if (bestRpmVal === undefined || bestSpeedVal === undefined) {
                 for (let i = 0; i < history.length; i++) {
@@ -564,8 +565,7 @@
                     const itemDate = normalizeDateStr(item.time);
                     if (itemDate > targetDateStr) break;
 
-                    // 過去のレコードに記録された最高記録があれば引き継ぐ
-                    if (item.maxRpm !== undefined && item.maxRpm !== null && !isNaN(item.maxRpm)) {
+                    if (item.maxRpm !== undefined && item.maxRpm !== null && !isNaN(item.maxRpm) && item.maxRpm > 0) {
                         if (bestRpmVal === undefined || item.maxRpm >= bestRpmVal) {
                             bestRpmVal = item.maxRpm;
                             bestRpmDate = item.maxRpmDate || itemDate;
@@ -577,7 +577,7 @@
                         }
                     }
 
-                    if (item.maxSpeed !== undefined && item.maxSpeed !== null && !isNaN(item.maxSpeed)) {
+                    if (item.maxSpeed !== undefined && item.maxSpeed !== null && !isNaN(item.maxSpeed) && item.maxSpeed > 0) {
                         if (bestSpeedVal === undefined || item.maxSpeed >= bestSpeedVal) {
                             bestSpeedVal = item.maxSpeed;
                             bestSpeedDate = item.maxSpeedDate || itemDate;
@@ -592,7 +592,7 @@
             }
 
             // 最高回転数表示（走行距離 m 計算）
-            if (bestRpmVal !== undefined && bestRpmVal !== null) {
+            if (bestRpmVal !== undefined && bestRpmVal !== null && bestRpmVal > 0) {
                 const datePrefix = bestRpmDate ? `${normalizeDateStr(bestRpmDate)} : ` : "";
                 let rpmStr = `${datePrefix}${Number(bestRpmVal).toLocaleString()} 回`;
                 if (diameterAtDate && diameterAtDate > 0) {
@@ -605,7 +605,7 @@
             }
 
             // 最高平均速度表示（cm/s と km/h 計算）
-            if (bestSpeedVal !== undefined && bestSpeedVal !== null) {
+            if (bestSpeedVal !== undefined && bestSpeedVal !== null && bestSpeedVal > 0) {
                 const datePrefix = bestSpeedDate ? `${normalizeDateStr(bestSpeedDate)} : ` : "";
                 const speedCmSec = Number(bestSpeedVal);
                 const speedKmH = (speedCmSec * 0.036).toFixed(2);
@@ -882,7 +882,7 @@
             return { hArr, dArr, wVal };
         }
 
-        // CSVデータのパースと保存（末尾の最高記録4項目対応）
+        // CSVデータのパースと保存（末尾の最高記録4項目対応: 0-0-0形式も許容）
         function processCSV(csvLine, targetDeviceKey = null, isBulkImport = false) {
             let values = csvLine.split(',');
             if (values.length < 5) return; 
