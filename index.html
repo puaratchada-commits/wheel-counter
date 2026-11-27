@@ -138,6 +138,10 @@
 
     <!-- 棒グラフ対象の選択 & 表示日数 & データ管理ボタン -->
     <div class="controls">
+        <!-- 保存ボタン -->
+        <button id="downloadCsvBtn" style="background-color: #e8f5e9; border: 1px solid #4caf50;">選択個体CSV保存</button>
+        <button id="downloadAllCsvBtn" style="background-color: #e3f2fd; border: 1px solid #2196f3;">全個体CSV保存</button>
+        <button id="clearBtn" style="color: red;">データ全消去</button>
         <label for="barTargetSelect">全体棒グラフの対象: </label>
         <select id="barTargetSelect">
             <option value="2" selected>運動時間 (分)</option>
@@ -156,10 +160,7 @@
             <option value="10000">全期間</option>
         </select>
 
-        <!-- 保存ボタン -->
-        <button id="downloadCsvBtn" style="background-color: #e8f5e9; border: 1px solid #4caf50;">選択個体CSV保存</button>
-        <button id="downloadAllCsvBtn" style="background-color: #e3f2fd; border: 1px solid #2196f3;">全個体CSV保存</button>
-        <button id="clearBtn" style="color: red;">データ全消去</button>
+
     </div>
 
     <!-- 全体推移グラフ -->
