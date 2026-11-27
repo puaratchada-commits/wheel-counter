@@ -142,7 +142,18 @@
         <button id="downloadCsvBtn" style="background-color: #e8f5e9; border: 1px solid #4caf50;">選択個体CSV保存</button>
         <button id="downloadAllCsvBtn" style="background-color: #e3f2fd; border: 1px solid #2196f3;">全個体CSV保存</button>
         <button id="clearBtn" style="color: red;">データ全消去</button>
-        <BR>
+        
+
+
+
+    </div>
+
+    <!-- 全体推移グラフ -->
+    <div class="chart-box">
+        <h3>【日付ごとの推移】 <span id="displayDateRange" style="font-size: 15px; color: #555; font-weight: bold; margin-left: 8px;"></span></h3>
+        <div class="chart-container-wrapper">
+            <canvas id="wheelChart"></canvas>
+        </div>
         <label for="barTargetSelect">全体棒グラフの対象: </label>
         <select id="barTargetSelect">
             <option value="2" selected>運動時間 (分)</option>
@@ -160,16 +171,8 @@
             <option value="100">100日</option>
             <option value="10000">全期間</option>
         </select>
-
-
-    </div>
-
-    <!-- 全体推移グラフ -->
-    <div class="chart-box">
-        <h3>【日付ごとの推移】 <span id="displayDateRange" style="font-size: 15px; color: #555; font-weight: bold; margin-left: 8px;"></span></h3>
-        <div class="chart-container-wrapper">
-            <canvas id="wheelChart"></canvas>
-        </div>
+    
+    
     </div>
 
     <!-- 12時〜翌11時 時間帯別分布グラフ -->
