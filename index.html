@@ -129,15 +129,14 @@
         </div>
     </div><br>
 
-    <!-- 棒グラフ対象の選択 & 表示日数 & データ管理ボタン -->
+    <!-- データ管理ボタン -->
     <div class="controls">
-        <!-- 保存ボタン -->
         <button id="downloadCsvBtn" style="background-color: #e8f5e9; border: 1px solid #4caf50;">選択個体CSV保存</button>
         <button id="downloadAllCsvBtn" style="background-color: #e3f2fd; border: 1px solid #2196f3;">全個体CSV保存</button>
         <button id="clearBtn" style="color: red;">データ全消去</button>
-
     </div>
-     <!-- 体重手動入力コントロール -->
+
+    <!-- 体重手動入力コントロール -->
     <div class="weight-box">
         <label for="weightInput">今日の体重 (g): </label>
         <input type="number" id="weightInput" step="0.1" placeholder="例: 180" style="width: 90px;">
@@ -167,8 +166,6 @@
             <option value="100">100日</option>
             <option value="10000">全期間</option>
         </select>
-    
-    
     </div>
 
     <!-- 12時〜翌11時 時間帯別分布グラフ -->
@@ -183,6 +180,7 @@
         </div>
         <canvas id="hourlyChart"></canvas>
     </div>
+
     <!-- 日付操作コントロール（グラフ間に配置） -->
     <div class="date-controls">
         <button id="prevDayBtn">◀ 前日</button>
@@ -191,6 +189,7 @@
         <button id="filterBtn">指定日周辺を表示</button>
         <button id="resetBtn">最新に戻る</button>
     </div>
+
     <!-- 集計結果表示エリア -->
     <div id="statsContainer">
         <b>【選択個体・日の確定データ】</b><br>
@@ -216,8 +215,8 @@
     <!-- 最下段: 選択日時点の最高記録表示エリア -->
     <div id="recordContainer" class="record-box">
         <b class="title" id="recordTitle">【最高記録】</b>
-        最高回転数（1日）: <span id="displayMaxRpmRecord" style="font-weight: bold; color: #ad1457;">--</span><br>
-        最高平均速度（1日）: <span id="displayMaxSpeedRecord" style="font-weight: bold; color: #ad1457;">--</span>
+        最高回転数（1日）: <span id="displayMaxRpmRecord" style="font-weight: bold; color: #ad1457;">記録なし</span><br>
+        最高平均速度（1日）: <span id="displayMaxSpeedRecord" style="font-weight: bold; color: #ad1457;">記録なし</span>
     </div>
 
     <!-- CSV出力用 モーダル -->
@@ -556,8 +555,8 @@
 
             if (!targetDateStr || history.length === 0) {
                 recordTitleEl.textContent = "【最高記録】";
-                maxRpmEl.textContent = "--";
-                maxSpeedEl.textContent = "--";
+                maxRpmEl.textContent = "記録なし";
+                maxSpeedEl.textContent = "記録なし";
                 return;
             }
 
@@ -578,12 +577,12 @@
             }
 
             let bestRpmDate = "";
-            let bestRpmVal = undefined;
+            let bestRpmVal = 0;
             let bestSpeedDate = "";
-            let bestSpeedVal = undefined;
+            let bestSpeedVal = 0;
 
-            // 1. 選択日のレコードに受信データ由来の有効な最高記録（> 0）があればそれを優先表示
             if (targetRecord) {
+                // 選択日のレコードが存在する場合は、受信データに含まれていた最高記録をそのまま採用（0なら記録なし）
                 if (targetRecord.maxRpm !== undefined && targetRecord.maxRpm !== null && !isNaN(targetRecord.maxRpm) && targetRecord.maxRpm > 0) {
                     bestRpmVal = targetRecord.maxRpm;
                     bestRpmDate = targetRecord.maxRpmDate || "";
@@ -592,43 +591,26 @@
                     bestSpeedVal = targetRecord.maxSpeed;
                     bestSpeedDate = targetRecord.maxSpeedDate || "";
                 }
-            }
-
-            // 2. 選択日のレコードに最高記録データが含まれていない場合は、その日以前の履歴から補完算出
-            if (bestRpmVal === undefined || bestSpeedVal === undefined) {
-                for (let i = 0; i < history.length; i++) {
+            } else {
+                // 選択日にレコードがない場合（データなし日）は、その日より前の直近レコードの最高記録を参照
+                for (let i = history.length - 1; i >= 0; i--) {
                     const item = history[i];
-                    const itemDate = normalizeDateStr(item.time);
-                    if (itemDate > targetDateStr) break;
-
-                    if (item.maxRpm !== undefined && item.maxRpm !== null && !isNaN(item.maxRpm) && item.maxRpm > 0) {
-                        if (bestRpmVal === undefined || item.maxRpm >= bestRpmVal) {
+                    if (normalizeDateStr(item.time) < targetDateStr) {
+                        if (item.maxRpm !== undefined && item.maxRpm !== null && !isNaN(item.maxRpm) && item.maxRpm > 0) {
                             bestRpmVal = item.maxRpm;
-                            bestRpmDate = item.maxRpmDate || itemDate;
+                            bestRpmDate = item.maxRpmDate || "";
                         }
-                    } else if (item.rpm !== undefined && !isNaN(item.rpm) && item.rpm > 0) {
-                        if (bestRpmVal === undefined || item.rpm > bestRpmVal) {
-                            bestRpmVal = item.rpm;
-                            bestRpmDate = itemDate;
-                        }
-                    }
-
-                    if (item.maxSpeed !== undefined && item.maxSpeed !== null && !isNaN(item.maxSpeed) && item.maxSpeed > 0) {
-                        if (bestSpeedVal === undefined || item.maxSpeed >= bestSpeedVal) {
+                        if (item.maxSpeed !== undefined && item.maxSpeed !== null && !isNaN(item.maxSpeed) && item.maxSpeed > 0) {
                             bestSpeedVal = item.maxSpeed;
-                            bestSpeedDate = item.maxSpeedDate || itemDate;
+                            bestSpeedDate = item.maxSpeedDate || "";
                         }
-                    } else if (item.speed !== undefined && !isNaN(item.speed) && item.speed > 0) {
-                        if (bestSpeedVal === undefined || item.speed > bestSpeedVal) {
-                            bestSpeedVal = item.speed;
-                            bestSpeedDate = itemDate;
-                        }
+                        break;
                     }
                 }
             }
 
             // 最高回転数表示（走行距離 m 計算）
-            if (bestRpmVal !== undefined && bestRpmVal !== null && bestRpmVal > 0) {
+            if (bestRpmVal > 0) {
                 const datePrefix = bestRpmDate ? `${normalizeDateStr(bestRpmDate)} : ` : "";
                 let rpmStr = `${datePrefix}${Number(bestRpmVal).toLocaleString()} 回`;
                 if (diameterAtDate && diameterAtDate > 0) {
@@ -637,17 +619,17 @@
                 }
                 maxRpmEl.textContent = rpmStr;
             } else {
-                maxRpmEl.textContent = "--";
+                maxRpmEl.textContent = "記録なし";
             }
 
             // 最高平均速度表示（cm/s と km/h 計算）
-            if (bestSpeedVal !== undefined && bestSpeedVal !== null && bestSpeedVal > 0) {
+            if (bestSpeedVal > 0) {
                 const datePrefix = bestSpeedDate ? `${normalizeDateStr(bestSpeedDate)} : ` : "";
                 const speedCmSec = Number(bestSpeedVal);
                 const speedKmH = (speedCmSec * 0.036).toFixed(2);
                 maxSpeedEl.textContent = `${datePrefix}${speedCmSec.toFixed(1)} cm/s（${speedKmH} km/h）`;
             } else {
-                maxSpeedEl.textContent = "--";
+                maxSpeedEl.textContent = "記録なし";
             }
         }
 
@@ -1290,10 +1272,10 @@
 
                 const diameterStr = item.diameter !== undefined && item.diameter !== null ? item.diameter : "";
                 const accRpmStr = item.accumulatedRpm !== undefined && item.accumulatedRpm !== null ? item.accumulatedRpm : "";
-                const maxRpmDateStr = item.maxRpmDate ? normalizeDateStr(item.maxRpmDate) : "";
-                const maxRpmStr = item.maxRpm !== undefined && item.maxRpm !== null ? item.maxRpm : "";
-                const maxSpeedDateStr = item.maxSpeedDate ? normalizeDateStr(item.maxSpeedDate) : "";
-                const maxSpeedStr = item.maxSpeed !== undefined && item.maxSpeed !== null ? item.maxSpeed : "";
+                const maxRpmDateStr = item.maxRpmDate ? normalizeDateStr(item.maxRpmDate) : "0-0-0";
+                const maxRpmStr = item.maxRpm !== undefined && item.maxRpm !== null ? item.maxRpm : 0;
+                const maxSpeedDateStr = item.maxSpeedDate ? normalizeDateStr(item.maxSpeedDate) : "0-0-0";
+                const maxSpeedStr = item.maxSpeed !== undefined && item.maxSpeed !== null ? item.maxSpeed : 0;
 
                 csvContent += `${currentDevKey},${customName},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr},${maxRpmDateStr},${maxRpmStr},${maxSpeedDateStr},${maxSpeedStr}\r\n`;
             });
@@ -1344,10 +1326,10 @@
 
                 const diameterStr = item.diameter !== undefined && item.diameter !== null ? item.diameter : "";
                 const accRpmStr = item.accumulatedRpm !== undefined && item.accumulatedRpm !== null ? item.accumulatedRpm : "";
-                const maxRpmDateStr = item.maxRpmDate ? normalizeDateStr(item.maxRpmDate) : "";
-                const maxRpmStr = item.maxRpm !== undefined && item.maxRpm !== null ? item.maxRpm : "";
-                const maxSpeedDateStr = item.maxSpeedDate ? normalizeDateStr(item.maxSpeedDate) : "";
-                const maxSpeedStr = item.maxSpeed !== undefined && item.maxSpeed !== null ? item.maxSpeed : "";
+                const maxRpmDateStr = item.maxRpmDate ? normalizeDateStr(item.maxRpmDate) : "0-0-0";
+                const maxRpmStr = item.maxRpm !== undefined && item.maxRpm !== null ? item.maxRpm : 0;
+                const maxSpeedDateStr = item.maxSpeedDate ? normalizeDateStr(item.maxSpeedDate) : "0-0-0";
+                const maxSpeedStr = item.maxSpeed !== undefined && item.maxSpeed !== null ? item.maxSpeed : 0;
 
                 csvContent += `${item.devKey},${item.customName},${normalizeDateStr(item.time)},${item.rpm || 0},${item.speed || 0},${item.duration || 0},${w}${hourlyStr},${timeCols.join(',')},${diameterStr},${accRpmStr},${maxRpmDateStr},${maxRpmStr},${maxSpeedDateStr},${maxSpeedStr}\r\n`;
             });
