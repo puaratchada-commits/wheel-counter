@@ -136,7 +136,7 @@
         <button id="saveWeightBtn">体重を保存</button>
     </div>
 
-    <!-- 棒グラフ対象の選択 & データ管理ボタン -->
+    <!-- 棒グラフ対象の選択 & 表示日数 & データ管理ボタン -->
     <div class="controls">
         <label for="barTargetSelect">全体棒グラフの対象: </label>
         <select id="barTargetSelect">
@@ -145,6 +145,17 @@
             <option value="1">平均速度 (cm/s)</option>
             <option value="3">体重 (g)</option>
         </select>
+        
+        <label for="displayDaysSelect">表示日数: </label>
+        <select id="displayDaysSelect">
+            <option value="7">7日</option>
+            <option value="14">14日</option>
+            <option value="30">30日</option>
+            <option value="50" selected>50日</option>
+            <option value="100">100日</option>
+            <option value="10000">全期間</option>
+        </select>
+
         <!-- 保存ボタン -->
         <button id="downloadCsvBtn" style="background-color: #e8f5e9; border: 1px solid #4caf50;">選択個体CSV保存</button>
         <button id="downloadAllCsvBtn" style="background-color: #e3f2fd; border: 1px solid #2196f3;">全個体CSV保存</button>
@@ -242,6 +253,17 @@
 
     <script>
         const pad2 = (n) => String(n).padStart(2, '0');
+
+        // 表示日数の取得・保存ヘルパー
+        const displayDaysSelect = document.getElementById('displayDaysSelect');
+        const savedDisplayLimit = localStorage.getItem('wheelDisplayDaysLimit');
+        if (savedDisplayLimit && [...displayDaysSelect.options].some(o => o.value === savedDisplayLimit)) {
+            displayDaysSelect.value = savedDisplayLimit;
+        }
+        function getDisplayLimit() {
+            const val = parseInt(displayDaysSelect.value, 10);
+            return isNaN(val) ? 50 : val;
+        }
 
         // 時間フォーマット変換（秒 → ○分○秒）
         function formatDuration(seconds) {
@@ -418,7 +440,10 @@
             }
         });
 
-        function renderRecentData(limit = 50) {
+        let isViewingSpecificDate = false;
+
+        function renderRecentData(limit = getDisplayLimit()) {
+            isViewingSpecificDate = false;
             const currentKey = getCurrentDeviceKey();
             localStorage.setItem('activeSelectedDevice', currentKey);
             
@@ -445,7 +470,8 @@
             }
         }
 
-        function renderDataAroundDate(targetDateStr, limit = 50) {
+        function renderDataAroundDate(targetDateStr, limit = getDisplayLimit()) {
+            isViewingSpecificDate = true;
             const currentKey = getCurrentDeviceKey();
             localStorage.setItem('activeSelectedDevice', currentKey);
             
@@ -481,6 +507,16 @@
             }
             updateLatestAccumulatedAndRecordsDisplay(history, normalizedTarget);
         }
+
+        // 表示日数変更時のイベント
+        displayDaysSelect.addEventListener('change', () => {
+            localStorage.setItem('wheelDisplayDaysLimit', displayDaysSelect.value);
+            if (isViewingSpecificDate && dateFilter.value) {
+                renderDataAroundDate(dateFilter.value, getDisplayLimit());
+            } else {
+                renderRecentData(getDisplayLimit());
+            }
+        });
 
         // 累計回転数（最新値）と、選択日付時点での最高記録（最高回転数・最高平均速度）の表示更新
         function updateLatestAccumulatedAndRecordsDisplay(history, targetDateStr) {
@@ -529,7 +565,7 @@
             // 選択日付そのもののレコードを探す
             const targetRecord = history.find(item => normalizeDateStr(item.time) === targetDateStr);
             
-            // 選択日時点の直径を取得（その日のレコードにあれば優先、なければそれ以前の最新直径）
+            // 選択日時点の直径を取得
             let diameterAtDate = (targetRecord && targetRecord.diameter > 0) ? targetRecord.diameter : latestDiameter;
             if (!diameterAtDate) {
                 for (let i = history.length - 1; i >= 0; i--) {
@@ -557,8 +593,7 @@
                 }
             }
 
-            // 2. 選択日のレコードに最高記録データが含まれていない場合（0-0-0,0 の場合や過去データ）は、
-            //    その日以前（<= targetDateStr）の履歴からその時点の最高値を算出して補完表示
+            // 2. 選択日のレコードに最高記録データが含まれていない場合は、その日以前の履歴から補完算出
             if (bestRpmVal === undefined || bestSpeedVal === undefined) {
                 for (let i = 0; i < history.length; i++) {
                     const item = history[i];
@@ -633,7 +668,7 @@
                 if (dataList.length > 0) {
                     const startDate = normalizeDateStr(dataList[0].time);
                     const endDate = normalizeDateStr(dataList[dataList.length - 1].time);
-                    dateRangeEl.textContent = `${startDate} ～ ${endDate}`;
+                    dateRangeEl.textContent = `${startDate} ～ ${endDate}（${dataList.length}日分）`;
                 } else {
                     dateRangeEl.textContent = "";
                 }
@@ -721,11 +756,11 @@
             hourlyChart.update();
         }
 
-        renderRecentData(50);
+        renderRecentData(getDisplayLimit());
 
         document.getElementById('deviceSelect').addEventListener('change', (e) => {
             localStorage.setItem('activeSelectedDevice', e.target.value);
-            renderRecentData(50);
+            renderRecentData(getDisplayLimit());
         });
 
         document.getElementById('addDeviceBtn').addEventListener('click', () => {
@@ -741,7 +776,7 @@
                     localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
                 }
                 updateDeviceSelectOptions(trimmedKey);
-                renderRecentData(50);
+                renderRecentData(getDisplayLimit());
                 alert(`個体 [${trimmedKey}] を追加し、表示を切り替えました！`);
             }
         });
@@ -757,7 +792,7 @@
                 map[currentKey] = newName.trim();
                 localStorage.setItem('wheelDeviceNamesMap', JSON.stringify(map));
                 updateDeviceSelectOptions(currentKey);
-                renderRecentData(50);
+                renderRecentData(getDisplayLimit());
                 alert(`個体名を [${newName.trim()}] に変更しました！`);
             }
         });
@@ -801,7 +836,7 @@
 
                 if (list.includes(detectedName)) {
                     updateDeviceSelectOptions(detectedName);
-                    renderRecentData(50);
+                    renderRecentData(getDisplayLimit());
                     const customName = map[detectedName] || detectedName;
                     connectBtn.textContent = `接続中: ${customName}`;
                     alert(`登録済みのデバイス [${detectedName}] に接続しました。\n個体 [${customName}] に表示を切り替えます。`);
@@ -819,7 +854,7 @@
                     localStorage.setItem(`wheelData_${detectedName}`, JSON.stringify([]));
 
                     updateDeviceSelectOptions(detectedName);
-                    renderRecentData(50);
+                    renderRecentData(getDisplayLimit());
 
                     connectBtn.textContent = `接続中: ${chosenName}`;
                     alert(`新規デバイス [${detectedName}] を個体名 [${chosenName}] として登録・接続しました！`);
@@ -910,7 +945,6 @@
                     maxRpmVal = v1;
                     maxSpeedDateVal = normalizeDateStr(d2);
                     maxSpeedVal = v2;
-                    // 最高記録4列を除いた部分を以降の解析に使用
                     values = values.slice(0, values.length - 4);
                 }
             }
@@ -1026,7 +1060,7 @@
             
             if (!isBulkImport) {
                 updateDeviceSelectOptions(currentTargetKey);
-                renderRecentData(50);
+                renderRecentData(getDisplayLimit());
             }
         }
 
@@ -1105,7 +1139,7 @@
                 importedCount++;
             }
             updateDeviceSelectOptions(getCurrentDeviceKey());
-            renderRecentData(50);
+            renderRecentData(getDisplayLimit());
             
             setTimeout(() => {
                 wheelChart.resize();
@@ -1163,7 +1197,7 @@
         function showDateDataAndAround(targetDateStr) {
             const normDate = normalizeDateStr(targetDateStr);
             dateFilter.value = normDate;
-            renderDataAroundDate(normDate, 50);
+            renderDataAroundDate(normDate, getDisplayLimit());
         }
         document.getElementById('filterBtn').addEventListener('click', () => {
             if (!dateFilter.value) { alert("日付を選択してください。"); return; }
@@ -1186,7 +1220,7 @@
         }
         document.getElementById('prevDayBtn').addEventListener('click', () => shiftDate(-1));
         document.getElementById('nextDayBtn').addEventListener('click', () => shiftDate(1));
-        document.getElementById('resetBtn').addEventListener('click', () => { renderRecentData(50); });
+        document.getElementById('resetBtn').addEventListener('click', () => { renderRecentData(getDisplayLimit()); });
 
         let currentCsvString = "";
         let currentCsvFilename = "data.csv";
@@ -1354,7 +1388,7 @@
                 }
 
                 updateDeviceSelectOptions();
-                renderRecentData(50);
+                renderRecentData(getDisplayLimit());
                 alert(`個体 [${customName}] のデータを完全に消去しました。`);
             }
         });
